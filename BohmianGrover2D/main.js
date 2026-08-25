@@ -28,7 +28,7 @@ const LN2 = Math.log(2);
 
 const params = {
   target: 3,
-  stepsPerFrame: 18,
+  stepsPerFrame: 5,
   dt: 0.00003,
   nParticles: 30000,
   rhoMin: 1e-6,
@@ -47,12 +47,15 @@ const params = {
   dotSigma: 0.28,
   dotGain: 0.85,
   showTrail: 1,
-  trailHalfLife: 0.035,
-  trailWidth: 3.0,
+  trailHalfLife: 0.01,
   trailVisGain: 0.16,
   trailVisGamma: 0.58,
   trailStampGain: 0.28,
 };
+
+function getTrailWidth() {
+  return params.dotSize * 0.75;
+}
 
 const dom = {
   controls: document.getElementById('controls'),
@@ -388,7 +391,7 @@ function createTrails(){deleteTrails();const res=Math.max(256,Math.min(1024,Math
 function clearTrails(){if(!trails.fboA)return;for(const f of [trails.fboA,trails.fboB]){gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.viewport(0,0,trails.w,trails.h);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}gl.bindFramebuffer(gl.FRAMEBUFFER,null);trails.flip=0;}
 function trailStep(dtTotal){if(!params.showTrail||!trails.fboA||!particle.count)return;const src=trails.flip?trails.texB:trails.texA;const dst=trails.flip?trails.fboA:trails.fboB;const fade=Math.exp(-LN2*dtTotal/Math.max(params.trailHalfLife,1e-6));
   gl.useProgram(programs.densityStep);gl.bindFramebuffer(gl.FRAMEBUFFER,dst);gl.viewport(0,0,trails.w,trails.h);bindTexture(0,src,U.densityStep.prev);gl.uniform1f(U.densityStep.fade,fade);gl.disable(gl.BLEND);gl.bindVertexArray(vaoEmpty);gl.drawArrays(gl.TRIANGLES,0,3);
-  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.colorMask(true,false,false,false);gl.useProgram(programs.particleStamp);gl.bindVertexArray(particle.vao);gl.uniform1f(U.particleStamp.point,params.dotSize);gl.uniform1i(U.particleStamp.n,particle.count);gl.uniform1f(U.particleStamp.trail,params.trailWidth);gl.uniform1f(U.particleStamp.sigma,params.dotSigma);gl.uniform1f(U.particleStamp.gain,params.dotGain);gl.uniform1f(U.particleStamp.stamp,params.trailStampGain);gl.drawArrays(gl.POINTS,0,particle.count);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.colorMask(true,false,false,false);gl.useProgram(programs.particleStamp);gl.bindVertexArray(particle.vao);gl.uniform1f(U.particleStamp.point,params.dotSize);gl.uniform1i(U.particleStamp.n,particle.count);gl.uniform1f(U.particleStamp.trail,getTrailWidth());gl.uniform1f(U.particleStamp.sigma,params.dotSigma);gl.uniform1f(U.particleStamp.gain,params.dotGain);gl.uniform1f(U.particleStamp.stamp,params.trailStampGain);gl.drawArrays(gl.POINTS,0,particle.count);
   gl.colorMask(true,true,true,true);gl.disable(gl.BLEND);gl.bindVertexArray(null);gl.bindFramebuffer(gl.FRAMEBUFFER,null);trails.flip=1-trails.flip;
 }
 
@@ -513,7 +516,24 @@ function addSection(text){const e=document.createElement('div');e.className='sec
 function addSlider(key,label,min,max,step,onChange=null){const row=document.createElement('div');row.className='row';const lab=document.createElement('label');lab.textContent=label;const inp=document.createElement('input');inp.type='range';inp.min=min;inp.max=max;inp.step=step;inp.value=params[key];const val=document.createElement('div');val.className='val';val.textContent=fmt(params[key]);inp.addEventListener('input',()=>{params[key]=parseFloat(inp.value);val.textContent=fmt(params[key]);});inp.addEventListener('change',()=>{onChange?.();updateDiagnostics(true);});row.append(lab,inp,val);dom.controls.appendChild(row);}
 function addToggle(key,label,onChange=null){const row=document.createElement('div');row.className='row';const lab=document.createElement('label');lab.textContent=label;const b=document.createElement('button');b.style.flex='1';const sync=()=>b.textContent=params[key]?'ON':'OFF';sync();b.addEventListener('click',()=>{params[key]=params[key]?0:1;sync();onChange?.();});row.append(lab,b,document.createElement('div'));row.lastChild.className='val';dom.controls.appendChild(row);}
 function addSegment(key,label,values,onChange=null){const row=document.createElement('div');row.className='row';const lab=document.createElement('label');lab.textContent=label;const seg=document.createElement('div');seg.className='seg';const bs=values.map((v,i)=>{const b=document.createElement('button');b.textContent=v;b.addEventListener('click',()=>{params[key]=i;sync();onChange?.();});seg.appendChild(b);return b;});const sync=()=>bs.forEach((b,i)=>b.classList.toggle('selected',i===params[key]));sync();row.append(lab,seg,document.createElement('div'));row.lastChild.className='val';dom.controls.appendChild(row);}
-function buildUi(){addSection('Visualization');addToggle('showPhase','show phase');addToggle('showPhaseArrows','phase-gradient arrows');addSlider('arrowGrid','arrow grid',8,40,1);addSlider('arrowGain','arrow sensitivity',.01,.35,.005);addSlider('arrowLength','arrow length',.25,1.15,.05);addSlider('arrowThickness','arrow thickness',.45,2.2,.05);addToggle('showParticles','show particles');addToggle('showTrail','draw trails',clearTrails);addSlider('visGain','density gain',.1,3,.05);addSlider('visGamma','density gamma',.25,1.4,.05);addSlider('dotSize','particle size',2,14,.5);addSlider('nParticles','particle count',1000,250000,1000,rebuildParticles);addSlider('trailHalfLife','trail half-life',.005,.12,.005);addSection('Numerics');addSlider('stepsPerFrame','steps / frame',4,80,1);addSlider('dt','RK4 dt',.00001,.00004,.000001);addSlider('velClamp','velocity clamp',5,80,1);}
+function buildUi(){addSection('Visualization');
+  addToggle('showPhase','show phase');
+  addToggle('showPhaseArrows','phase-gradient arrows');
+  addSlider('arrowGrid','arrow grid',8,40,1);
+  //addSlider('arrowGain','arrow sensitivity',.01,.35,.005);
+  //addSlider('arrowLength','arrow length',.25,1.15,.05);
+  //addSlider('arrowThickness','arrow thickness',.45,2.2,.05);
+  addToggle('showParticles','show particles');
+  addToggle('showTrail','draw trails',clearTrails);
+  //addSlider('visGain','density gain',.1,3,.05);
+  //addSlider('visGamma','density gamma',.25,1.4,.05);
+  addSlider('dotSize','particle size',2,14,.5);
+  addSlider('nParticles','particle count',1000,250000,1000,rebuildParticles);
+  //addSlider('trailHalfLife','trail half-life',.005,.12,.005);
+  //addSection('Numerics');addSlider('stepsPerFrame','steps / frame',4,80,1);
+  //addSlider('dt','RK4 dt',.00001,.00004,.000001);
+  //addSlider('velClamp','velocity clamp',5,80,1);
+  }
 
 function installEvents(){
   dom.reset.addEventListener('click',()=>resetSimulation());
