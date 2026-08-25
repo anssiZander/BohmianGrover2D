@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bohmian Grover Search — One Particle, Two Qubits</title>
+  <link rel="icon" href="data:," />
+  <style>
+    html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:system-ui,sans-serif;color:#d9e6f8}
+    #wrap{position:relative;width:100%;height:100%} canvas{width:100%;height:100%;display:block;touch-action:none}
+    .panel{position:absolute;background:rgba(5,16,36,.64);border:1px solid rgba(116,174,255,.22);border-radius:10px;backdrop-filter:blur(6px);box-sizing:border-box;user-select:none}
+    #ui{left:12px;top:12px;width:380px;max-height:calc(100vh - 24px);padding:12px;display:flex;flex-direction:column}
+    #info{right:12px;top:12px;width:390px;max-height:calc(100vh - 24px);padding:12px;overflow:auto}
+    .head{display:flex;align-items:center;justify-content:space-between;gap:10px}.head h3{margin:0;font-size:14px;color:#fff;font-weight:650}
+    #uibody{overflow:auto;padding-right:4px}.section{margin-top:12px;margin-bottom:7px;font-size:11px;font-weight:700;color:#9fbce0;text-transform:uppercase;letter-spacing:1px}
+    .row{display:flex;align-items:center;gap:8px;margin:6px 0}.row label{flex:0 0 112px;font-size:12px;color:#b9cce5}.row input[type=range]{flex:1;min-width:0}.val{flex:0 0 62px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:#fff}
+    button{padding:8px 10px;border-radius:8px;border:1px solid rgba(132,192,255,.26);background:rgba(68,130,210,.14);color:#fff;cursor:pointer}button:hover{background:rgba(86,150,232,.22)}button:disabled{opacity:.45;cursor:not-allowed}.selected{background:rgba(64,156,255,.35)!important;border-color:rgba(64,156,255,.6)!important}
+    .seg{display:flex;gap:6px;flex:1}.seg button{flex:1;min-width:0;padding:6px;font-size:12px}.targets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 10px}.targets button{min-height:36px;font-size:12px}.target01{grid-column:1;grid-row:1}.target11{grid-column:2;grid-row:1}.target00{grid-column:1;grid-row:2}.target10{grid-column:2;grid-row:2}.ops{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ops button{min-height:40px}.ops .full{grid-column:1/-1;background:rgba(132,64,210,.2);border-color:rgba(194,120,255,.45)}
+    .btnrow{display:flex;gap:8px;margin-top:9px}.btnrow button{flex:1}.status{margin-top:9px;font-size:12px;line-height:1.42;color:#b9cce5}.status b{color:#fff}
+    #progressTrack{height:7px;border-radius:999px;background:rgba(90,130,180,.18);overflow:hidden;margin-top:8px}#progressBar{height:100%;width:0;background:linear-gradient(90deg,#3ec6ff,#d65cff)}
+    .theory{font-size:13px;line-height:1.45;color:#c8d9ef}.theory p{margin:0 0 9px}.math{margin:7px 0 10px;padding:8px 10px;border:1px solid rgba(132,192,255,.18);border-radius:8px;background:rgba(8,23,51,.54);color:#eef7ff;font-family:"Cambria Math","Times New Roman",serif;font-size:15px;overflow:auto;white-space:nowrap}
+    #logical{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}.logicalCell{border:1px solid rgba(132,192,255,.16);border-radius:8px;padding:7px;background:rgba(8,23,51,.42)}.logicalTop{display:flex;justify-content:space-between;font-size:12px}.bar{height:7px;margin-top:5px;background:rgba(90,130,180,.17);border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#37c8ff,#e055ff);width:0}.phase{font-size:11px;color:#9fbce0;margin-top:4px}
+    #quadrants{position:absolute;pointer-events:none;display:none;text-shadow:0 1px 3px #000;font:700 13px system-ui;color:rgba(218,241,255,.78)}#quadrants span{position:absolute}.q00{left:3%;bottom:3%}.q01{left:3%;top:3%}.q10{right:3%;bottom:3%}.q11{right:3%;top:3%}
+    .phaseLegend{display:flex;align-items:center;gap:14px;margin:10px 0 12px}.phaseWheel{position:relative;flex:0 0 92px;width:92px;height:92px;border-radius:50%;background:conic-gradient(from 90deg,#ff0000,#80ff00,#00ffff,#8000ff,#ff0000);border:1px solid rgba(220,240,255,.35)}.phaseWheel:after{content:'';position:absolute;inset:27px;border-radius:50%;background:rgba(5,16,36,.94);border:1px solid rgba(132,192,255,.2)}.phaseLabels{font-size:12px;line-height:1.55;color:#c8d9ef}.phaseLabels b{color:#fff}.note{color:#9fbce0}.warning{color:#ffd08b}.mini{width:34px;height:28px;padding:0;display:flex;align-items:center;justify-content:center}
+    @media(max-width:860px){#info{display:none}#ui{width:calc(100vw - 24px);max-width:390px}}@media(max-width:480px){#ui{left:8px;top:8px;width:calc(100vw - 16px)}.row label{flex-basis:92px}.val{flex-basis:48px}}
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="quadrants"><span class="q00">|00⟩</span><span class="q01">|01⟩</span><span class="q10">|10⟩</span><span class="q11">|11⟩</span></div>
+  <div id="ui" class="panel">
+    <div class="head"><h3>Bohmian Grover Search</h3><button id="minui" class="mini">v</button></div>
+    <div id="uibody">
+      <div class="section">Algorithm</div>
+      <div id="targetSummary" class="status" style="margin:0 0 6px"><b>Marked state</b>: |11⟩ — upper-right quadrant</div>
+      <div class="targets" aria-label="Choose the marked Grover state">
+        <button class="target01" data-target="1" aria-pressed="false">|01⟩ upper-left</button>
+        <button class="target11 selected" data-target="3" aria-pressed="true">|11⟩ upper-right</button>
+        <button class="target00" data-target="0" aria-pressed="false">|00⟩ lower-left</button>
+        <button class="target10" data-target="2" aria-pressed="false">|10⟩ lower-right</button>
+      </div>
+      <div class="ops">
+        <button id="prepare">1. Prepare balanced state</button>
+        <button id="oracle">2. Oracle: mark |11⟩</button>
+        <button id="inverse">3a. Inverse mixer A†</button>
+        <button id="reference">3b. Reference phase |00⟩</button>
+        <button id="forward">3c. Forward mixer A</button>
+        <button id="next">Apply next operation</button>
+        <button id="full" class="full">Run full Grover search</button>
+      </div>
+      <div id="progressTrack"><div id="progressBar"></div></div>
+      <div class="status" id="stageStatus"></div>
+      <div id="controls"></div>
+      <div class="btnrow"><button id="reset">Reset (R)</button><button id="pause">Pause</button></div>
+      <div class="status" id="stats"></div>
+    </div>
+  </div>
+  <div id="info" class="panel">
+    <div class="head"><h3>Logical-state diagnostics</h3></div>
+    <div id="logical"></div>
+    <div class="phaseLegend" aria-label="Phase color legend">
+      <div class="phaseWheel" role="img" aria-label="Rainbow phase wheel"></div>
+      <div class="phaseLabels"><b>Phase hue</b><br>red: 0<br>yellow-green: +π/2<br>cyan: ±π<br>violet-blue: −π/2</div>
+    </div>
+    <div class="theory" style="margin-top:12px">
+      <p>One Bohmian particle lives in a real hard-walled square. The two logical bits are encoded by left/right localization in <i>x</i> and bottom/top localization in <i>y</i>.</p>
+      <div class="math">|00⟩ = ϕ<sub>L</sub>(x)ϕ<sub>B</sub>(y), &nbsp; ϕ<sub>L</sub> = (u<sub>1</sub>+u<sub>2</sub>)/√2</div>
+      <p>The simulation resets in the localized state |00⟩. The first operation visibly and numerically evolves it under the square-box Hamiltonian into the balanced search state <i>A</i>|00⟩, with 25% logical probability in every state. The diffuser is calibrated to this same physical mixer <i>A</i>.</p>
+      <p>Choose any of the four logical states as the marked result. Changing the target resets the run. The oracle applies an exact logical phase reflection to the selected spatial mode. The diffuser remains exposed as three separate operations: inverse mixing, a reference pulse on |00⟩, and forward mixing.</p>
+      <div class="math">D = A S<sub>00</sub>A†, &nbsp; A = exp(-iH<sub>box</sub>τ/ℏ)</div>
+      <p>The bright dots are an equilibrium ensemble of separate one-particle runs. The wave evolves on a GPU grid; the dots follow <i>v</i> = <i>j</i>/|ψ|².</p>
+      <p>The smooth colored arrows show the local phase gradient ∇<i>S</i>. Their direction is the Bohmian guiding direction, while both length and thickness increase with |∇<i>S</i>|. Each arrow uses the complementary hue of the local phase so it remains visible over the wave. Arrows fade near nodes, where phase is undefined and numerical division by very small density would be misleading.</p>
+      <div class="math"><b>v</b> = (ℏ/m)∇<i>S</i>, &nbsp; ψ = |ψ|e<sup>iS</sup></div>
+      <p class="note">The oracle and reference operations use the exact projector gate U<sub>q</sub>(θ) = I + (e<sup>−iθ</sup>−1)|q⟩⟨q| on the numerical spatial wave. This makes every target equivalent. Particle positions are held fixed during the animated gate; the following interference and motion are generated by numerical Schrödinger evolution.</p>
+      <p class="note">Rainbow hue shows the full phase arg(ψ), including global phase rotation. No reference phase is subtracted. Brightness still carries density, so true nodes remain dim; no phase angle itself is assigned black.</p>
+      <p class="note">Time advances only while an operation is running. Between button presses the numerical wave and Bohmian particle ensemble are held at the completed checkpoint, so arbitrary user delay cannot change the algorithm.</p>
+      <p class="warning">This is a two-qubit educational search demonstration, not a scalable quantum-computer architecture.</p>
+    </div>
+  </div>
+</div>
+<script src="./recording.js"></script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
