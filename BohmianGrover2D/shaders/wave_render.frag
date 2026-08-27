@@ -56,6 +56,14 @@ float quadrantBorder(vec2 uv, int q) {
   float within = step(d.x, 0.25) * step(d.y, 0.25);
   return within * (1.0 - smoothstep(0.002, 0.008, edge));
 }
+float quadrantGlow(vec2 uv, int q) {
+  vec2 center = vec2((q == 2 || q == 3) ? 0.75 : 0.25,
+                     (q == 1 || q == 3) ? 0.75 : 0.25);
+  vec2 d = abs(uv - center);
+  float edge = min(abs(d.x - 0.245), abs(d.y - 0.245));
+  float within = step(d.x, 0.25) * step(d.y, 0.25);
+  return within * (1.0 - smoothstep(0.008, 0.045, edge));
+}
 void main() {
   float inside;
   vec2 uv = boxUVFromScreen(vUV, inside);
@@ -81,7 +89,13 @@ void main() {
   float cross = max(1.0 - smoothstep(0.0015, 0.0045, abs(uv.x - 0.5)),
                     1.0 - smoothstep(0.0015, 0.0045, abs(uv.y - 0.5)));
   col = mix(col, vec3(0.18,0.55,0.72), 0.34 * cross);
-  col += vec3(1.0,0.58,0.13) * quadrantBorder(uv, uTarget) * 0.42;
+  // The marked quadrant has a persistent crimson wash, broad glow, and bright
+  // red edge. The phase hue and density remain visible underneath the tint.
+  float targetArea = quadrantMask(uv, uTarget);
+  float targetGlow = quadrantGlow(uv, uTarget);
+  float targetEdge = quadrantBorder(uv, uTarget);
+  col = mix(col, col * vec3(1.06, 0.76, 0.80) + vec3(0.13, 0.005, 0.012), 0.20 * targetArea);
+  col += vec3(1.0,0.015,0.035) * (0.34 * targetGlow + 1.05 * targetEdge);
   col += vec3(1.0,0.28,0.72) * quadrantMask(uv, uGateQuadrant) * uGateFlash * 0.16;
   fragColor = vec4(col, 1.0);
 }

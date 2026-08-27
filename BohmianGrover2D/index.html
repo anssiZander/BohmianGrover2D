@@ -8,38 +8,52 @@
   <style>
     html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:system-ui,sans-serif;color:#d9e6f8}
     #wrap{position:relative;width:100%;height:100%} canvas{width:100%;height:100%;display:block;touch-action:none}
-    .panel{position:absolute;background:rgba(5,16,36,.64);border:1px solid rgba(116,174,255,.22);border-radius:10px;backdrop-filter:blur(6px);box-sizing:border-box;user-select:none}
+    .panel{position:absolute;z-index:5;background:rgba(5,16,36,.64);border:1px solid rgba(116,174,255,.22);border-radius:10px;backdrop-filter:blur(6px);box-sizing:border-box;user-select:none}
     #ui{left:12px;top:12px;width:380px;max-height:calc(100vh - 24px);padding:12px;display:flex;flex-direction:column}
-    #info{right:12px;top:12px;width:390px;max-height:calc(100vh - 24px);padding:12px;overflow:auto}
+    #info{right:12px;top:224px;width:390px;max-height:calc(100vh - 236px);padding:12px;overflow:auto;transition:top .22s ease,max-height .22s ease}
     .head{display:flex;align-items:center;justify-content:space-between;gap:10px}.head h3{margin:0;font-size:14px;color:#fff;font-weight:650}
     #uibody{overflow:auto;padding-right:4px}.section{margin-top:12px;margin-bottom:7px;font-size:11px;font-weight:700;color:#9fbce0;text-transform:uppercase;letter-spacing:1px}
     .row{display:flex;align-items:center;gap:8px;margin:6px 0}.row label{flex:0 0 112px;font-size:12px;color:#b9cce5}.row input[type=range]{flex:1;min-width:0}.val{flex:0 0 62px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:#fff}
     button{padding:8px 10px;border-radius:8px;border:1px solid rgba(132,192,255,.26);background:rgba(68,130,210,.14);color:#fff;cursor:pointer}button:hover{background:rgba(86,150,232,.22)}button:disabled{opacity:.45;cursor:not-allowed}.selected{background:rgba(64,156,255,.35)!important;border-color:rgba(64,156,255,.6)!important}
-    .seg{display:flex;gap:6px;flex:1}.seg button{flex:1;min-width:0;padding:6px;font-size:12px}.targets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 10px}.targets button{min-height:36px;font-size:12px}.target01{grid-column:1;grid-row:1}.target11{grid-column:2;grid-row:1}.target00{grid-column:1;grid-row:2}.target10{grid-column:2;grid-row:2}.ops{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ops button{min-height:40px}.ops .full{grid-column:1/-1;background:rgba(132,64,210,.2);border-color:rgba(194,120,255,.45)}
+    .seg{display:flex;gap:6px;flex:1}.seg button{flex:1;min-width:0;padding:6px;font-size:12px}.viewButton{width:100%;margin:5px 0 10px;padding:8px;font-size:12px;background:rgba(43,125,199,.2);color:#d7e9ff}.ops{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ops button{min-height:40px}.ops .full{grid-column:1/-1;background:rgba(132,64,210,.2);border-color:rgba(194,120,255,.45)}
     .btnrow{display:flex;gap:8px;margin-top:9px}.btnrow button{flex:1}.status{margin-top:9px;font-size:12px;line-height:1.42;color:#b9cce5}.status b{color:#fff}
     #progressTrack{height:7px;border-radius:999px;background:rgba(90,130,180,.18);overflow:hidden;margin-top:8px}#progressBar{height:100%;width:0;background:linear-gradient(90deg,#3ec6ff,#d65cff)}
     .theory{font-size:13px;line-height:1.45;color:#c8d9ef}.theory p{margin:0 0 9px}.math{margin:7px 0 10px;padding:8px 10px;border:1px solid rgba(132,192,255,.18);border-radius:8px;background:rgba(8,23,51,.54);color:#eef7ff;font-family:"Cambria Math","Times New Roman",serif;font-size:15px;overflow:auto;white-space:nowrap}
     #logical{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}.logicalCell{border:1px solid rgba(132,192,255,.16);border-radius:8px;padding:7px;background:rgba(8,23,51,.42)}.logicalTop{display:flex;justify-content:space-between;font-size:12px}.bar{height:7px;margin-top:5px;background:rgba(90,130,180,.17);border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#37c8ff,#e055ff);width:0}.phase{font-size:11px;color:#9fbce0;margin-top:4px}
-    #quadrants{position:absolute;pointer-events:none;display:none;text-shadow:0 1px 3px #000;font:700 13px system-ui;color:rgba(218,241,255,.78)}#quadrants span{position:absolute}.q00{left:3%;bottom:3%}.q01{left:3%;top:3%}.q10{right:3%;bottom:3%}.q11{right:3%;top:3%}
+    #multiGrids,#singleGrid,#singleTargetBar{position:absolute;pointer-events:none;display:none;z-index:2}.miniGrid{position:absolute;pointer-events:none}.gridSurface{position:absolute;left:0;bottom:0;pointer-events:none;border:1px solid rgba(139,200,255,.25);box-shadow:0 0 28px rgba(53,131,213,.1);text-shadow:0 1px 3px #000;font:700 13px system-ui;color:rgba(218,241,255,.78)}.gridSurface .quadrantLabel,#singleGrid .quadrantLabel{position:absolute}.q00{left:3%;bottom:3%}.q01{left:3%;top:3%}.q10{right:3%;bottom:3%}.q11{right:3%;top:3%}
+    .miniGridHeader{position:absolute;left:0;right:0;top:0;height:40px;display:grid;grid-template-columns:minmax(82px,1fr) auto;align-items:center;gap:6px;padding:4px 5px;border:1px solid rgba(255,72,87,.52);border-radius:9px 9px 5px 5px;background:linear-gradient(90deg,rgba(87,12,24,.88),rgba(5,16,36,.88));backdrop-filter:blur(5px);box-shadow:0 7px 20px rgba(0,0,0,.34)}.miniGridHeader button,#singleTargetBar button{pointer-events:auto;min-width:0;padding:6px 8px;font-size:11px;font-weight:760;white-space:nowrap;border-color:rgba(255,92,105,.52);background:rgba(132,25,42,.3)}.miniGridHeader button.selected{background:rgba(132,25,42,.3)!important;border-color:rgba(255,92,105,.52)!important;box-shadow:none}.miniGridHeader button:hover:not(:disabled),#singleTargetBar button:hover:not(:disabled){background:rgba(187,38,55,.42);border-color:rgba(255,126,136,.78)}.targetLocation{min-width:55px;color:#ffb4b9;font-size:8px;font-weight:780;letter-spacing:.55px;text-align:right;white-space:nowrap}.miniOutcome.correct{color:#91ffd7}.miniGrid.selected-grid .gridSurface{border-color:rgba(255,91,105,.88);box-shadow:0 0 30px rgba(255,45,67,.22)}
+    #singleGrid{border:1px solid rgba(255,91,105,.58);box-shadow:0 0 32px rgba(255,45,67,.13);text-shadow:0 1px 3px #000;font:700 13px system-ui;color:rgba(218,241,255,.78)}#singleTargetBar{height:43px;grid-template-columns:repeat(4,1fr);gap:5px;padding:4px;border:1px solid rgba(255,82,97,.4);border-radius:10px;background:linear-gradient(90deg,rgba(70,10,21,.88),rgba(5,16,36,.88));backdrop-filter:blur(5px);box-shadow:0 8px 24px rgba(0,0,0,.34)}
     .phaseLegend{display:flex;align-items:center;gap:14px;margin:10px 0 12px}.phaseWheel{position:relative;flex:0 0 92px;width:92px;height:92px;border-radius:50%;background:conic-gradient(from 90deg,#ff0000,#80ff00,#00ffff,#8000ff,#ff0000);border:1px solid rgba(220,240,255,.35)}.phaseWheel:after{content:'';position:absolute;inset:27px;border-radius:50%;background:rgba(5,16,36,.94);border:1px solid rgba(132,192,255,.2)}.phaseLabels{font-size:12px;line-height:1.55;color:#c8d9ef}.phaseLabels b{color:#fff}.note{color:#9fbce0}.warning{color:#ffd08b}.mini{width:34px;height:28px;padding:0;display:flex;align-items:center;justify-content:center}
-    @media(max-width:860px){#info{display:none}#ui{width:calc(100vw - 24px);max-width:390px}}@media(max-width:480px){#ui{left:8px;top:8px;width:calc(100vw - 16px)}.row label{flex-basis:92px}.val{flex-basis:48px}}
+    #circuitPanel{right:12px;top:12px;width:430px;min-height:200px;padding:10px 11px 9px;overflow:hidden;border-color:rgba(101,190,255,.38);background:linear-gradient(145deg,rgba(5,18,42,.92),rgba(25,8,40,.82));box-shadow:0 12px 38px rgba(0,0,0,.46),0 0 26px rgba(62,145,255,.08);transition:width .22s ease,min-height .22s ease}
+    #circuitPanel .head h3{font-size:12px;letter-spacing:.075em;text-transform:uppercase;color:#cce9ff}
+    #circuitToggle{width:32px;height:27px;padding:0;font-size:16px;line-height:1}
+    .circuitBody{margin-top:7px;transition:opacity .16s ease}.circuitSvg{display:block;width:100%;height:auto;overflow:visible}
+    .circuitWire{stroke:rgba(156,211,255,.56);stroke-width:2}.circuitWireGlow{stroke:rgba(52,151,255,.15);stroke-width:7}.circuitInput{fill:#e8f6ff;font:700 20px system-ui,sans-serif}.circuitBit{fill:#8fbce8;font:600 12px system-ui,sans-serif;letter-spacing:.06em}.circuitArrow{fill:#8fcfff}
+    .circuitGate .gateBox{fill:rgba(21,47,83,.74);stroke:rgba(128,182,230,.42);stroke-width:2;transition:fill .18s ease,stroke .18s ease,opacity .18s ease}.circuitGate .gateText{fill:#b8c9dc;font:800 20px system-ui,sans-serif;text-anchor:middle}.circuitGate .gateCaption{fill:#718ba6;font:700 9px system-ui,sans-serif;letter-spacing:.08em;text-anchor:middle}.circuitGate .gateTick{fill:#8dffda;font:900 15px system-ui,sans-serif;opacity:0}.circuitGate.future{opacity:.48}.circuitGate.complete{opacity:1}.circuitGate.complete .gateBox{fill:rgba(24,99,91,.5);stroke:rgba(111,255,216,.7)}.circuitGate.complete .gateText{fill:#d8fff5}.circuitGate.complete .gateTick{opacity:1}.circuitGate.active{opacity:1}.circuitGate.active .gateBox{fill:rgba(81,44,134,.8);stroke:#69d9ff;stroke-width:3;filter:drop-shadow(0 0 7px rgba(78,207,255,.9));animation:circuitPulse 1.15s ease-in-out infinite}.circuitGate.active .gateText{fill:#fff}.circuitGate.active .gateCaption{fill:#9feaff}
+    .diffuserBrace{fill:none;stroke:rgba(196,128,255,.55);stroke-width:2}.diffuserLabel{fill:#cba3ff;font:700 10px system-ui,sans-serif;letter-spacing:.1em;text-anchor:middle}.readoutNode circle{fill:rgba(25,44,70,.7);stroke:rgba(132,192,255,.4);stroke-width:2}.readoutNode path{fill:none;stroke:#b9d7ef;stroke-width:2}.readoutNode text{fill:#7892ad;font:700 9px system-ui,sans-serif;text-anchor:middle}.readoutNode.complete circle{fill:rgba(92,45,19,.78);stroke:#ffd76d;filter:drop-shadow(0 0 6px rgba(255,205,82,.65))}.readoutNode.complete path{stroke:#fff0ae}.readoutNode.complete text{fill:#ffe28a}
+    #circuitMeta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:1px;padding:7px 8px;border:1px solid rgba(111,179,245,.15);border-radius:7px;background:rgba(4,12,28,.48);font-size:10px;line-height:1.25}.circuitTarget{flex:0 0 auto;color:#ffb8c1;font-weight:800}.circuitStatus{min-width:0;color:#b8cde5;text-align:right}.circuitStatus b{color:#fff}.circuitLegend{display:flex;justify-content:flex-end;gap:11px;margin-top:5px;color:#758da8;font-size:9px}.circuitLegend span:before{content:'';display:inline-block;width:7px;height:7px;margin-right:4px;border-radius:50%;vertical-align:-.5px;background:#52667d}.circuitLegend .done:before{background:#65e5c2}.circuitLegend .running:before{background:#65d8ff;box-shadow:0 0 5px #65d8ff}
+    #circuitPanel.paused .circuitGate.active .gateBox{animation-play-state:paused;stroke:#ffd36b}.circuitCollapsed #circuitPanel{width:278px;min-height:0}.circuitCollapsed #circuitPanel .circuitBody{display:none}.circuitCollapsed #info{top:60px;max-height:calc(100vh - 72px)}
+    @keyframes circuitPulse{0%,100%{stroke-opacity:.74}50%{stroke-opacity:1;filter:drop-shadow(0 0 11px rgba(92,218,255,1))}}
+    @media(max-width:1180px){#info{display:none}#circuitPanel{right:8px}}@media(max-width:860px){#ui{width:calc(100vw - 24px);max-width:390px}#circuitPanel{width:min(430px,calc(100vw - 24px))}}@media(max-width:480px){#ui{left:8px;top:8px;width:calc(100vw - 16px)}.row label{flex-basis:92px}.val{flex-basis:48px}#circuitPanel{right:8px;top:8px;width:calc(100vw - 16px)}}
   </style>
 </head>
 <body>
 <div id="wrap">
   <canvas id="c"></canvas>
-  <div id="quadrants"><span class="q00">|00⟩</span><span class="q01">|01⟩</span><span class="q10">|10⟩</span><span class="q11">|11⟩</span></div>
+  <div id="multiGrids" aria-label="Four parallel Grover marked-state simulations">
+    <div class="miniGrid" data-grid-target="1"><div class="miniGridHeader"><button data-target="1" aria-pressed="false">MARKED |01⟩</button><span class="targetLocation">UPPER LEFT</span></div><div class="gridSurface" aria-hidden="true"><span class="quadrantLabel q00">|00⟩</span><span class="quadrantLabel q01">|01⟩</span><span class="quadrantLabel q10">|10⟩</span><span class="quadrantLabel q11">|11⟩</span></div></div>
+    <div class="miniGrid selected-grid" data-grid-target="3"><div class="miniGridHeader"><button data-target="3" aria-pressed="true">MARKED |11⟩</button><span class="targetLocation">UPPER RIGHT</span></div><div class="gridSurface" aria-hidden="true"><span class="quadrantLabel q00">|00⟩</span><span class="quadrantLabel q01">|01⟩</span><span class="quadrantLabel q10">|10⟩</span><span class="quadrantLabel q11">|11⟩</span></div></div>
+    <div class="miniGrid" data-grid-target="0"><div class="miniGridHeader"><button data-target="0" aria-pressed="false">MARKED |00⟩</button><span class="targetLocation">LOWER LEFT</span></div><div class="gridSurface" aria-hidden="true"><span class="quadrantLabel q00">|00⟩</span><span class="quadrantLabel q01">|01⟩</span><span class="quadrantLabel q10">|10⟩</span><span class="quadrantLabel q11">|11⟩</span></div></div>
+    <div class="miniGrid" data-grid-target="2"><div class="miniGridHeader"><button data-target="2" aria-pressed="false">MARKED |10⟩</button><span class="targetLocation">LOWER RIGHT</span></div><div class="gridSurface" aria-hidden="true"><span class="quadrantLabel q00">|00⟩</span><span class="quadrantLabel q01">|01⟩</span><span class="quadrantLabel q10">|10⟩</span><span class="quadrantLabel q11">|11⟩</span></div></div>
+  </div>
+  <div id="singleGrid" aria-hidden="true"><span class="quadrantLabel q00">|00⟩</span><span class="quadrantLabel q01">|01⟩</span><span class="quadrantLabel q10">|10⟩</span><span class="quadrantLabel q11">|11⟩</span></div>
+  <div id="singleTargetBar" aria-label="Choose one marked Grover state"><button data-target="1" aria-pressed="false">MARK |01⟩</button><button class="selected" data-target="3" aria-pressed="true">MARK |11⟩</button><button data-target="0" aria-pressed="false">MARK |00⟩</button><button data-target="2" aria-pressed="false">MARK |10⟩</button></div>
   <div id="ui" class="panel">
     <div class="head"><h3>Bohmian Grover Search</h3><button id="minui" class="mini">v</button></div>
     <div id="uibody">
       <div class="section">Algorithm</div>
-      <div id="targetSummary" class="status" style="margin:0 0 6px"><b>Marked state</b>: |11⟩ — upper-right quadrant</div>
-      <div class="targets" aria-label="Choose the marked Grover state">
-        <button class="target01" data-target="1" aria-pressed="false">|01⟩ upper-left</button>
-        <button class="target11 selected" data-target="3" aria-pressed="true">|11⟩ upper-right</button>
-        <button class="target00" data-target="0" aria-pressed="false">|00⟩ lower-left</button>
-        <button class="target10" data-target="2" aria-pressed="false">|10⟩ lower-right</button>
-      </div>
+      <div id="targetSummary" class="status" style="margin:0 0 6px"><b>Parallel search</b>: all four marked states · selected details |11⟩</div>
+      <button id="viewToggle" class="viewButton">Switch to single-grid view</button>
       <div class="ops">
         <button id="prepare">1. Prepare balanced state</button>
         <button id="oracle">2. Oracle: mark |11⟩</button>
@@ -50,12 +64,48 @@
         <button id="full" class="full">Run full Grover search</button>
       </div>
       <div id="progressTrack"><div id="progressBar"></div></div>
-      <div class="status" id="stageStatus"></div>
+      <div class="status" id="stageStatus" hidden></div>
       <div id="controls"></div>
       <div class="btnrow"><button id="reset">Reset (R)</button><button id="pause">Pause</button></div>
-      <div class="status" id="stats"></div>
+      <div class="status" id="stats" hidden></div>
     </div>
   </div>
+  <section id="circuitPanel" class="panel" aria-label="Grover quantum gate circuit">
+    <div class="head"><h3>Quantum gate circuit</h3><button id="circuitToggle" type="button" aria-expanded="true" title="Minimize circuit diagram">−</button></div>
+    <div class="circuitBody">
+      <svg class="circuitSvg" viewBox="0 0 840 188" role="img" aria-labelledby="circuitTitle circuitDescription">
+        <title id="circuitTitle">Two-qubit Grover gate circuit</title>
+        <desc id="circuitDescription">Two input wires pass through preparation, oracle, inverse mixer, reference phase, forward mixer, and readout. The current operation is highlighted.</desc>
+        <line class="circuitWireGlow" x1="90" y1="56" x2="812" y2="56"/><line class="circuitWireGlow" x1="90" y1="118" x2="812" y2="118"/>
+        <line class="circuitWire" x1="90" y1="56" x2="812" y2="56"/><line class="circuitWire" x1="90" y1="118" x2="812" y2="118"/>
+        <text class="circuitInput" x="4" y="62">|0⟩</text><text class="circuitBit" x="50" y="61">x</text>
+        <text class="circuitInput" x="4" y="124">|0⟩</text><text class="circuitBit" x="50" y="123">y</text>
+        <path class="circuitArrow" d="M812 52l12 4-12 4zM812 114l12 4-12 4z"/>
+
+        <g class="circuitGate future" data-circuit-stage="1">
+          <rect class="gateBox" x="112" y="30" width="82" height="114" rx="9"/><text class="gateText" x="153" y="94">A</text><text class="gateCaption" x="153" y="161">PREPARE</text><text class="gateTick" x="180" y="47">✓</text>
+        </g>
+        <g class="circuitGate future" data-circuit-stage="2">
+          <rect class="gateBox" x="231" y="30" width="94" height="114" rx="9"/><text class="gateText" x="278" y="94">O<tspan baseline-shift="sub" font-size="12">w</tspan></text><text class="gateCaption" x="278" y="161">ORACLE</text><text class="gateTick" x="311" y="47">✓</text>
+        </g>
+        <g class="circuitGate future" data-circuit-stage="3">
+          <rect class="gateBox" x="367" y="30" width="82" height="114" rx="9"/><text class="gateText" x="408" y="94">A†</text><text class="gateCaption" x="408" y="161">INVERSE</text><text class="gateTick" x="435" y="47">✓</text>
+        </g>
+        <g class="circuitGate future" data-circuit-stage="4">
+          <rect class="gateBox" x="486" y="30" width="94" height="114" rx="9"/><text class="gateText" x="533" y="94">S<tspan baseline-shift="sub" font-size="12">00</tspan></text><text class="gateCaption" x="533" y="161">REF. PHASE</text><text class="gateTick" x="566" y="47">✓</text>
+        </g>
+        <g class="circuitGate future" data-circuit-stage="5">
+          <rect class="gateBox" x="622" y="30" width="82" height="114" rx="9"/><text class="gateText" x="663" y="94">A</text><text class="gateCaption" x="663" y="161">FORWARD</text><text class="gateTick" x="690" y="47">✓</text>
+        </g>
+        <path class="diffuserBrace" d="M356 173v7h359v-7"/><text class="diffuserLabel" x="535" y="187">DIFFUSER  D = A S₀₀ A†</text>
+        <g id="circuitReadout" class="readoutNode">
+          <circle cx="772" cy="87" r="35"/><path d="M751 96a22 22 0 0 1 42 0M772 96l13-18"/><text x="772" y="139">ANSWER</text>
+        </g>
+      </svg>
+      <div id="circuitMeta"><span id="circuitTarget" class="circuitTarget">w = |11⟩</span><span id="circuitStatus" class="circuitStatus" aria-live="polite">Ready · input |00⟩</span></div>
+      <div class="circuitLegend"><span class="done">completed</span><span class="running">active gate</span><span>upcoming</span></div>
+    </div>
+  </section>
   <div id="info" class="panel">
     <div class="head"><h3>Logical-state diagnostics</h3></div>
     <div id="logical"></div>
@@ -67,7 +117,8 @@
       <p>One Bohmian particle lives in a real hard-walled square. The two logical bits are encoded by left/right localization in <i>x</i> and bottom/top localization in <i>y</i>.</p>
       <div class="math">|00⟩ = ϕ<sub>L</sub>(x)ϕ<sub>B</sub>(y), &nbsp; ϕ<sub>L</sub> = (u<sub>1</sub>+u<sub>2</sub>)/√2</div>
       <p>The simulation resets in the localized state |00⟩. The first operation visibly and numerically evolves it under the square-box Hamiltonian into the balanced search state <i>A</i>|00⟩, with 25% logical probability in every state. The diffuser is calibrated to this same physical mixer <i>A</i>.</p>
-      <p>Choose any of the four logical states as the marked result. Changing the target resets the run. The oracle applies an exact logical phase reflection to the selected spatial mode. The diffuser remains exposed as three separate operations: inverse mixing, a reference pulse on |00⟩, and forward mixing.</p>
+      <p><b>Parallel view</b> runs four independent copies of the search, one for every possible marked state. Each mini-grid has its own numerical wave and Bohmian ensemble. This is a side-by-side comparison of four counterfactual searches, not one larger quantum state and not one oracle call that marks four answers.</p>
+      <p>In single view, choose any logical state as the marked result; changing it resets the run. In parallel view, each copy keeps its own fixed marked state and clicking a header only selects its diagnostics. The oracle applies an exact logical phase reflection to the relevant spatial mode. The diffuser remains exposed as three separate operations: inverse mixing, a reference pulse on |00⟩, and forward mixing.</p>
       <div class="math">D = A S<sub>00</sub>A†, &nbsp; A = exp(-iH<sub>box</sub>τ/ℏ)</div>
       <p>The bright dots are an equilibrium ensemble of separate one-particle runs. The wave evolves on a GPU grid; the dots follow <i>v</i> = <i>j</i>/|ψ|².</p>
       <p>The smooth colored arrows show the local phase gradient ∇<i>S</i>. Their direction is the Bohmian guiding direction, while both length and thickness increase with |∇<i>S</i>|. Each arrow uses the complementary hue of the local phase so it remains visible over the wave. Arrows fade near nodes, where phase is undefined and numerical division by very small density would be misleading.</p>

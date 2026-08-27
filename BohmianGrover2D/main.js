@@ -28,9 +28,9 @@ const LN2 = Math.log(2);
 
 const params = {
   target: 3,
-  stepsPerFrame: 5,
+  stepsPerFrame: 10,
   dt: 0.00003,
-  nParticles: 30000,
+  nParticles: 12000,
   rhoMin: 1e-6,
   velClamp: 35,
   visGain: 0.65,
@@ -58,6 +58,9 @@ function getTrailWidth() {
 }
 
 const dom = {
+  wrap: document.getElementById('wrap'),
+  ui: document.getElementById('ui'),
+  info: document.getElementById('info'),
   controls: document.getElementById('controls'),
   stats: document.getElementById('stats'),
   stage: document.getElementById('stageStatus'),
@@ -74,17 +77,39 @@ const dom = {
   full: document.getElementById('full'),
   minui: document.getElementById('minui'),
   uibody: document.getElementById('uibody'),
-  quadrants: document.getElementById('quadrants'),
+  multiGrids: document.getElementById('multiGrids'),
+  miniGrids: Array.from(document.querySelectorAll('[data-grid-target]')),
+  singleGrid: document.getElementById('singleGrid'),
+  singleTargetBar: document.getElementById('singleTargetBar'),
   targetSummary: document.getElementById('targetSummary'),
+  viewToggle: document.getElementById('viewToggle'),
   targetButtons: Array.from(document.querySelectorAll('[data-target]')),
+  circuitPanel: document.getElementById('circuitPanel'),
+  circuitToggle: document.getElementById('circuitToggle'),
+  circuitTarget: document.getElementById('circuitTarget'),
+  circuitStatus: document.getElementById('circuitStatus'),
+  circuitGates: Array.from(document.querySelectorAll('[data-circuit-stage]')),
+  circuitReadout: document.getElementById('circuitReadout'),
 };
 
 const SH = {};
 const U = {};
 let programs = {};
-let wave = {};
-let particle = {};
-let trails = {};
+const simulations = [0, 1, 2, 3].map(target => ({
+  target,
+  wave: {},
+  particle: {},
+  trails: {},
+  diagnostics: null,
+}));
+let currentSimulation = simulations[3];
+let wave = currentSimulation.wave;
+let particle = currentSimulation.particle;
+let trails = currentSimulation.trails;
+let viewMode = 'multi';
+let renderViewportWidth = 1;
+let renderViewportHeight = 1;
+let renderLayouts = [];
 let paused = false;
 let simulationReady = false;
 let frameRecordingActive = false;
@@ -93,17 +118,40 @@ let operationQueue = [];
 let activeSegment = null;
 let operationFinalStage = 0;
 let gateFlash = 0;
-let gateQuadrant = 0;
 let simTime = 0;
 let simSteps = 0;
 let frameCount = 0;
 let lastDiagnosticsFrame = -999;
 let lastDiagnostics = null;
 let rhoVisualMax = 20;
+let lastGlError = gl.NO_ERROR;
 const basis = [];
 let initialDensityCdf = null;
 let initialDensitySum = 0;
 const vaoEmpty = gl.createVertexArray();
+
+function simulationForTarget(target = params.target) {
+  const simulation = simulations.find(item => item.target === Number(target));
+  if (!simulation) throw new Error(`Unknown Grover target: ${target}`);
+  return simulation;
+}
+
+function activateSimulation(simulation) {
+  currentSimulation = simulation;
+  wave = simulation.wave;
+  particle = simulation.particle;
+  trails = simulation.trails;
+  return simulation;
+}
+
+function activeSimulations() {
+  return viewMode === 'multi' ? simulations : [simulationForTarget()];
+}
+
+function restoreSelectedSimulation() {
+  activateSimulation(simulationForTarget());
+  lastDiagnostics = currentSimulation.diagnostics;
+}
 
 function fmt(v, digits = 3) {
   if (!Number.isFinite(v)) return '—';
@@ -373,6 +421,13 @@ function rebuildParticles() {
   gl.bindBuffer(gl.ARRAY_BUFFER,particle.dst); gl.bufferData(gl.ARRAY_BUFFER,data.byteLength,gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER,null); bindParticleSource(); clearTrails();
 }
+function rebuildAllParticles() {
+  for (const simulation of simulations) {
+    activateSimulation(simulation);
+    rebuildParticles();
+  }
+  restoreSelectedSimulation();
+}
 function particleStep(dt, freeze=false) {
   if(!particle.count)return;
   gl.useProgram(programs.particleUpdate); bindTexture(0,wave.srcTex,U.particleUpdate.wave);
@@ -387,24 +442,46 @@ function readParticles() {
 }
 
 function deleteTrails(){for(const k of ['texA','texB'])if(trails[k])gl.deleteTexture(trails[k]);for(const k of ['fboA','fboB'])if(trails[k])gl.deleteFramebuffer(trails[k]);}
-function createTrails(){deleteTrails();const res=Math.max(256,Math.min(1024,Math.min(canvas.width,canvas.height)));trails.w=res;trails.h=res;trails.texA=makeTexture(trails.w,trails.h,gl.RGBA16F,gl.NEAREST);trails.texB=makeTexture(trails.w,trails.h,gl.RGBA16F,gl.NEAREST);trails.fboA=makeFbo(trails.texA);trails.fboB=makeFbo(trails.texB);trails.flip=0;clearTrails();}
+function createTrails(){deleteTrails();const res=viewMode==='multi'?384:Math.max(384,Math.min(768,Math.min(canvas.width,canvas.height)));trails.w=res;trails.h=res;trails.texA=makeTexture(trails.w,trails.h,gl.RGBA16F,gl.NEAREST);trails.texB=makeTexture(trails.w,trails.h,gl.RGBA16F,gl.NEAREST);trails.fboA=makeFbo(trails.texA);trails.fboB=makeFbo(trails.texB);trails.flip=0;clearTrails();}
 function clearTrails(){if(!trails.fboA)return;for(const f of [trails.fboA,trails.fboB]){gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.viewport(0,0,trails.w,trails.h);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}gl.bindFramebuffer(gl.FRAMEBUFFER,null);trails.flip=0;}
+function clearAllTrails(){for(const simulation of simulations){activateSimulation(simulation);clearTrails();}restoreSelectedSimulation();}
 function trailStep(dtTotal){if(!params.showTrail||!trails.fboA||!particle.count)return;const src=trails.flip?trails.texB:trails.texA;const dst=trails.flip?trails.fboA:trails.fboB;const fade=Math.exp(-LN2*dtTotal/Math.max(params.trailHalfLife,1e-6));
   gl.useProgram(programs.densityStep);gl.bindFramebuffer(gl.FRAMEBUFFER,dst);gl.viewport(0,0,trails.w,trails.h);bindTexture(0,src,U.densityStep.prev);gl.uniform1f(U.densityStep.fade,fade);gl.disable(gl.BLEND);gl.bindVertexArray(vaoEmpty);gl.drawArrays(gl.TRIANGLES,0,3);
   gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.colorMask(true,false,false,false);gl.useProgram(programs.particleStamp);gl.bindVertexArray(particle.vao);gl.uniform1f(U.particleStamp.point,params.dotSize);gl.uniform1i(U.particleStamp.n,particle.count);gl.uniform1f(U.particleStamp.trail,getTrailWidth());gl.uniform1f(U.particleStamp.sigma,params.dotSigma);gl.uniform1f(U.particleStamp.gain,params.dotGain);gl.uniform1f(U.particleStamp.stamp,params.trailStampGain);gl.drawArrays(gl.POINTS,0,particle.count);
   gl.colorMask(true,true,true,true);gl.disable(gl.BLEND);gl.bindVertexArray(null);gl.bindFramebuffer(gl.FRAMEBUFFER,null);trails.flip=1-trails.flip;
 }
 
-function resizeCanvas(){const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));const w=Math.max(1,Math.floor(canvas.clientWidth*dpr)),h=Math.max(1,Math.floor(canvas.clientHeight*dpr));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;createTrails();layoutQuadrants();return true;}return false;}
-function layoutQuadrants(){const side=Math.min(canvas.clientWidth,canvas.clientHeight);dom.quadrants.style.width=`${side}px`;dom.quadrants.style.height=`${side}px`;dom.quadrants.style.left=`${(canvas.clientWidth-side)/2}px`;dom.quadrants.style.top=`${(canvas.clientHeight-side)/2}px`;dom.quadrants.style.display='block';}
+function viewportFromCss(left,top,side){const scaleX=canvas.width/Math.max(1,canvas.clientWidth),scaleY=canvas.height/Math.max(1,canvas.clientHeight);return{x:Math.round(left*scaleX),y:Math.round(canvas.height-(top+side)*scaleY),width:Math.max(1,Math.round(side*scaleX)),height:Math.max(1,Math.round(side*scaleY))};}
+function layoutSimulationViews(){
+  const width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.clientHeight),padding=12;
+  const gap=Math.max(10,Math.min(18,Math.round(Math.min(width,height)*.016))),header=40;
+  const uiRect=dom.ui.getBoundingClientRect(),infoRect=dom.info.getBoundingClientRect();
+  const infoVisible=getComputedStyle(dom.info).display!=='none';
+  let regionLeft=width>=520?uiRect.right+12:padding,regionRight=infoVisible?infoRect.left-12:width-padding;
+  if(regionRight-regionLeft<310){regionLeft=padding;regionRight=width-padding;}
+  const regionWidth=Math.max(1,regionRight-regionLeft);
+  renderLayouts=[];document.body.dataset.viewMode=viewMode;
+  if(viewMode==='multi'){
+    const side=Math.max(80,Math.floor(Math.min((regionWidth-gap)/2,(height-2*padding-gap-2*header)/2)));
+    const clusterWidth=2*side+gap,clusterHeight=2*(side+header)+gap;
+    const originX=regionLeft+(regionWidth-clusterWidth)/2,originY=(height-clusterHeight)/2;
+    dom.multiGrids.style.cssText='display:block;inset:0;';dom.singleGrid.style.display='none';dom.singleTargetBar.style.display='none';
+    dom.miniGrids.forEach((element,index)=>{const row=Math.floor(index/2),column=index%2,left=originX+column*(side+gap),top=originY+row*(side+header+gap);element.style.left=`${left}px`;element.style.top=`${top}px`;element.style.width=`${side}px`;element.style.height=`${side+header}px`;const surface=element.querySelector('.gridSurface');surface.style.width=`${side}px`;surface.style.height=`${side}px`;renderLayouts.push({simulation:simulationForTarget(element.dataset.gridTarget),viewport:viewportFromCss(left,top+header,side)});});
+  }else{
+    const barHeight=43,barGap=5,side=Math.max(120,Math.floor(Math.min(regionWidth,height-2*padding-barHeight-barGap)));
+    const left=regionLeft+(regionWidth-side)/2,top=(height-side-barHeight-barGap)/2,gridTop=top+barHeight+barGap;
+    dom.multiGrids.style.display='none';dom.singleGrid.style.display='block';dom.singleGrid.style.left=`${left}px`;dom.singleGrid.style.top=`${gridTop}px`;dom.singleGrid.style.width=`${side}px`;dom.singleGrid.style.height=`${side}px`;dom.singleTargetBar.style.display='grid';dom.singleTargetBar.style.left=`${left}px`;dom.singleTargetBar.style.top=`${top}px`;dom.singleTargetBar.style.width=`${side}px`;renderLayouts.push({simulation:simulationForTarget(),viewport:viewportFromCss(left,gridTop,side)});
+  }
+}
+function resizeCanvas(){const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));const w=Math.max(1,Math.floor(canvas.clientWidth*dpr)),h=Math.max(1,Math.floor(canvas.clientHeight*dpr));if(canvas.width===w&&canvas.height===h)return false;canvas.width=w;canvas.height=h;for(const simulation of simulations){activateSimulation(simulation);createTrails();}restoreSelectedSimulation();layoutSimulationViews();return true;}
 
-function bindCommonParticleRender(Ux){gl.uniform1f(Ux.point,params.dotSize);if(Ux.n)gl.uniform1i(Ux.n,particle.count);if(Ux.trail)gl.uniform1f(Ux.trail,0);if(Ux.canvas)gl.uniform2f(Ux.canvas,canvas.width,canvas.height);gl.uniform1f(Ux.sigma,params.dotSigma);gl.uniform1f(Ux.gain,params.dotGain);}
+function bindCommonParticleRender(Ux){gl.uniform1f(Ux.point,params.dotSize);if(Ux.n)gl.uniform1i(Ux.n,particle.count);if(Ux.trail)gl.uniform1f(Ux.trail,0);if(Ux.canvas)gl.uniform2f(Ux.canvas,renderViewportWidth,renderViewportHeight);gl.uniform1f(Ux.sigma,params.dotSigma);gl.uniform1f(Ux.gain,params.dotGain);}
 function renderPhaseArrows(){
   if(!params.showPhaseArrows)return;
   const n=Math.max(4,Math.floor(params.arrowGrid));
   gl.useProgram(programs.phaseArrows);
   bindTexture(0,wave.srcTex,U.phaseArrows.wave);
-  gl.uniform2f(U.phaseArrows.canvas,canvas.width,canvas.height);
+  gl.uniform2f(U.phaseArrows.canvas,renderViewportWidth,renderViewportHeight);
   gl.uniform1i(U.phaseArrows.grid,n);
   gl.uniform1f(U.phaseArrows.gain,params.arrowGain);
   gl.uniform1f(U.phaseArrows.length,params.arrowLength);
@@ -416,56 +493,64 @@ function renderPhaseArrows(){
   gl.drawArraysInstanced(gl.TRIANGLES,0,6,n*n);
   gl.disable(gl.BLEND);
 }
-function renderTopDown(){const trailTex=trails.flip?trails.texB:trails.texA;gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.useProgram(programs.waveRender);bindTexture(0,wave.srcTex,U.waveRender.wave);gl.uniform1f(U.waveRender.gain,params.visGain);gl.uniform1f(U.waveRender.gamma,params.visGamma);gl.uniform1i(U.waveRender.phase,params.showPhase);gl.uniform2f(U.waveRender.canvas,canvas.width,canvas.height);gl.uniform1i(U.waveRender.target,params.target);gl.uniform1f(U.waveRender.flash,gateFlash);gl.uniform1i(U.waveRender.gateQ,gateQuadrant);gl.bindVertexArray(vaoEmpty);gl.drawArrays(gl.TRIANGLES,0,3);
-  if(params.showTrail&&trailTex){gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_COLOR);gl.useProgram(programs.densityRender);bindTexture(0,trailTex,U.densityRender.tex);gl.uniform1f(U.densityRender.gain,params.trailVisGain);gl.uniform1f(U.densityRender.gamma,params.trailVisGamma);gl.uniform1i(U.densityRender.blend,1);gl.uniform2f(U.densityRender.canvas,canvas.width,canvas.height);gl.uniform1i(U.densityRender.square,1);gl.bindVertexArray(vaoEmpty);gl.drawArrays(gl.TRIANGLES,0,3);gl.disable(gl.BLEND);}
+function renderTopDown(simulation,viewport){activateSimulation(simulation);const trailTex=trails.flip?trails.texB:trails.texA;gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(viewport.x,viewport.y,viewport.width,viewport.height);renderViewportWidth=viewport.width;renderViewportHeight=viewport.height;gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);
+  const activeGateQuadrant=activeSegment?.type==='phase'?segmentQuadrant(activeSegment,simulation):0;
+  gl.useProgram(programs.waveRender);bindTexture(0,wave.srcTex,U.waveRender.wave);gl.uniform1f(U.waveRender.gain,params.visGain);gl.uniform1f(U.waveRender.gamma,params.visGamma);gl.uniform1i(U.waveRender.phase,params.showPhase);gl.uniform2f(U.waveRender.canvas,renderViewportWidth,renderViewportHeight);gl.uniform1i(U.waveRender.target,simulation.target);gl.uniform1f(U.waveRender.flash,gateFlash);gl.uniform1i(U.waveRender.gateQ,activeGateQuadrant);gl.bindVertexArray(vaoEmpty);gl.drawArrays(gl.TRIANGLES,0,3);
+  if(params.showTrail&&trailTex){gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_COLOR);gl.useProgram(programs.densityRender);bindTexture(0,trailTex,U.densityRender.tex);gl.uniform1f(U.densityRender.gain,params.trailVisGain);gl.uniform1f(U.densityRender.gamma,params.trailVisGamma);gl.uniform1i(U.densityRender.blend,1);gl.uniform2f(U.densityRender.canvas,renderViewportWidth,renderViewportHeight);gl.uniform1i(U.densityRender.square,1);gl.bindVertexArray(vaoEmpty);gl.drawArrays(gl.TRIANGLES,0,3);gl.disable(gl.BLEND);}
   if(params.showParticles){gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.useProgram(programs.particleRender);gl.bindVertexArray(particle.vao);bindCommonParticleRender(U.particleRender);gl.drawArrays(gl.POINTS,0,particle.count);gl.disable(gl.BLEND);gl.bindVertexArray(null);}
   renderPhaseArrows();
 }
-function render(){renderTopDown();}
+function render(){gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);for(const layout of renderLayouts)renderTopDown(layout.simulation,layout.viewport);restoreSelectedSimulation();}
 
-function freeStep(dt){particleStep(dt,false);waveRk4(dt);simTime+=dt;simSteps++;}
+function evolveCurrentSimulation(dt){particleStep(dt,false);waveRk4(dt);}
+function freeStep(dt){evolveCurrentSimulation(dt);simTime+=dt;simSteps++;}
 function segmentLabel(seg){return seg?.label||'Idle';}
-function startOperation(segments,finalStage){if(activeSegment||operationQueue.length)return;operationQueue=segments.map(s=>({...s,elapsed:0,frame:0}));operationFinalStage=finalStage;activeSegment=operationQueue.shift()||null;gateFlash=0;syncButtons();updateStageStatus();}
-function finishSegment(){normalizeWave();activeSegment=operationQueue.shift()||null;if(!activeSegment){stageIndex=operationFinalStage;gateFlash=0;updateDiagnostics(true);syncButtons();}updateStageStatus();}
+function segmentQuadrant(segment,simulation){return segment?.quadrant==='target'?simulation.target:Number(segment?.quadrant||0);}
+function startOperation(segments,finalStage){if(activeSegment||operationQueue.length)return;const simulationIndices=activeSimulations().map(simulation=>simulation.target);operationQueue=segments.map(segment=>({...segment,elapsed:0,frame:0,simulationIndices:[...simulationIndices],preparedBySimulation:{},coefficientsBySimulation:{}}));operationFinalStage=finalStage;activeSegment=operationQueue.shift()||null;gateFlash=0;syncButtons();updateStageStatus();}
+function finishSegment(){const completed=activeSegment;for(const target of completed.simulationIndices){activateSimulation(simulationForTarget(target));normalizeWave();}activeSegment=operationQueue.shift()||null;restoreSelectedSimulation();if(!activeSegment){stageIndex=operationFinalStage;gateFlash=0;updateDiagnostics(true);syncButtons();}updateStageStatus();}
 function advanceOperation(){if(!activeSegment||paused)return 0;let advanced=0;
   if(activeSegment.type==='free'){
+    const completedTargets=[...activeSegment.simulationIndices];
     const maxSteps=Math.max(1,Math.floor(params.stepsPerFrame));
     for(let i=0;i<maxSteps&&activeSegment.elapsed<activeSegment.duration-1e-12;i++){
-      const dt=Math.min(params.dt,activeSegment.duration-activeSegment.elapsed);freeStep(dt);activeSegment.elapsed+=dt;advanced+=dt;
+      const dt=Math.min(params.dt,activeSegment.duration-activeSegment.elapsed);
+      for(const target of completedTargets){activateSimulation(simulationForTarget(target));evolveCurrentSimulation(dt);}
+      activeSegment.elapsed+=dt;advanced+=dt;simTime+=dt;simSteps++;
     }
+    for(const target of completedTargets){activateSimulation(simulationForTarget(target));trailStep(advanced);}
+    restoreSelectedSimulation();
     gateFlash=0;
     if(activeSegment.elapsed>=activeSegment.duration-1e-10)finishSegment();
   }else if(activeSegment.type==='phase'){
-    if(!activeSegment.prepared){activeSegment.coefficient=logicalOverlap(activeSegment.quadrant);copyWaveToPhaseBase();activeSegment.prepared=true;}
     const remaining=activeSegment.frames-activeSegment.frame;
     activeSegment.frame++;
     activeSegment.elapsed=activeSegment.frame/activeSegment.frames;
-    renderLogicalPhaseFromBase(activeSegment.angle*activeSegment.elapsed,activeSegment.quadrant,activeSegment.coefficient);
-    gateQuadrant=activeSegment.quadrant;gateFlash=Math.sin(Math.PI*Math.min(1,activeSegment.elapsed));
+    for(const target of activeSegment.simulationIndices){const simulation=simulationForTarget(target),quadrant=segmentQuadrant(activeSegment,simulation);activateSimulation(simulation);if(!activeSegment.preparedBySimulation[target]){activeSegment.coefficientsBySimulation[target]=logicalOverlap(quadrant);copyWaveToPhaseBase();activeSegment.preparedBySimulation[target]=true;}renderLogicalPhaseFromBase(activeSegment.angle*activeSegment.elapsed,quadrant,activeSegment.coefficientsBySimulation[target]);}
+    restoreSelectedSimulation();gateFlash=Math.sin(Math.PI*Math.min(1,activeSegment.elapsed));
     if(remaining<=1)finishSegment();
   }
   updateProgress();return advanced;
 }
 function opPrepare(){
   if(stageIndex!==0||activeSegment)return;
-  startOperation([{type:'free',duration:MIX_TIME,label:'1. Preparation mixer A'}],1);
+  startOperation([{type:'free',duration:MIX_TIME,circuitStage:1,label:'1. Preparation mixer A'}],1);
 }
 function opOracle(){
   if(stageIndex!==1||activeSegment)return;
-  startOperation([{type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:params.target,label:`2. Oracle: phase mark |${QUADRANT_NAMES[params.target]}⟩`}],2);
+  const label=viewMode==='multi'?'2. Four oracle phase marks in parallel':`2. Oracle: phase mark |${QUADRANT_NAMES[params.target]}⟩`;
+  startOperation([{type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:'target',circuitStage:2,label}],2);
 }
 function opInverse(){
   if(stageIndex!==2||activeSegment)return;
-  startOperation([{type:'free',duration:3*MIX_TIME,label:'3a. Diffuser: inverse mixer A†'}],3);
+  startOperation([{type:'free',duration:3*MIX_TIME,circuitStage:3,label:'3a. Diffuser: inverse mixer A†'}],3);
 }
 function opReference(){
   if(stageIndex!==3||activeSegment)return;
-  startOperation([{type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:0,label:'3b. Diffuser: reference phase on |00⟩'}],4);
+  startOperation([{type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:0,circuitStage:4,label:'3b. Diffuser: reference phase on |00⟩'}],4);
 }
 function opForward(){
   if(stageIndex!==4||activeSegment)return;
-  startOperation([{type:'free',duration:MIX_TIME,label:'3c. Diffuser: forward mixer A'}],5);
+  startOperation([{type:'free',duration:MIX_TIME,circuitStage:5,label:'3c. Diffuser: forward mixer A'}],5);
 }
 function opNext(){
   if(stageIndex===0)opPrepare();
@@ -478,39 +563,79 @@ function opFull(){
   if(activeSegment)return;
   resetSimulation(false);
   startOperation([
-    {type:'free',duration:MIX_TIME,label:'1. Preparation mixer A'},
-    {type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:params.target,label:`2. Oracle: phase mark |${QUADRANT_NAMES[params.target]}⟩`},
-    {type:'free',duration:3*MIX_TIME,label:'3a. Diffuser: inverse mixer A†'},
-    {type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:0,label:'3b. Diffuser: reference phase on |00⟩'},
-    {type:'free',duration:MIX_TIME,label:'3c. Diffuser: forward mixer A'}
+    {type:'free',duration:MIX_TIME,circuitStage:1,label:'1. Preparation mixer A'},
+    {type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:'target',circuitStage:2,label:viewMode==='multi'?'2. Four oracle phase marks in parallel':`2. Oracle: phase mark |${QUADRANT_NAMES[params.target]}⟩`},
+    {type:'free',duration:3*MIX_TIME,circuitStage:3,label:'3a. Diffuser: inverse mixer A†'},
+    {type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:0,circuitStage:4,label:'3b. Diffuser: reference phase on |00⟩'},
+    {type:'free',duration:MIX_TIME,circuitStage:5,label:'3c. Diffuser: forward mixer A'}
   ],5);
 }
 function updateProgress(){let p=0;if(activeSegment){p=activeSegment.type==='free'?activeSegment.elapsed/activeSegment.duration:activeSegment.frame/activeSegment.frames;}dom.progress.style.width=`${100*Math.max(0,Math.min(1,p))}%`;}
+function syncCircuitDiagram(){
+  const names=['Input |00⟩','Preparation A','Oracle O_w','Inverse mixer A†','Reference phase S₀₀','Forward mixer A'];
+  const activeStage=Number(activeSegment?.circuitStage||0);
+  const completedThrough=activeStage?activeStage-1:stageIndex;
+  for(const gate of dom.circuitGates){
+    const gateStage=Number(gate.dataset.circuitStage);
+    gate.classList.toggle('active',gateStage===activeStage);
+    gate.classList.toggle('complete',gateStage<=completedThrough);
+    gate.classList.toggle('future',gateStage>completedThrough&&gateStage!==activeStage);
+    if(gateStage===activeStage)gate.setAttribute('aria-current','step');else gate.removeAttribute('aria-current');
+  }
+  const finished=!activeSegment&&stageIndex===5;
+  dom.circuitReadout.classList.toggle('complete',finished);
+  dom.circuitPanel.classList.toggle('paused',paused&&Boolean(activeStage));
+  dom.circuitTarget.textContent=viewMode==='multi'?'w = all four targets':`w = |${QUADRANT_NAMES[params.target]}⟩`;
+  if(activeStage){
+    const progress=activeSegment.type==='free'?activeSegment.elapsed/Math.max(activeSegment.duration,1e-9):activeSegment.frame/Math.max(activeSegment.frames,1);
+    const verb=paused?'Paused':'Running';
+    dom.circuitStatus.innerHTML=`<b>${verb} ${activeStage}/5</b> · ${names[activeStage]} · ${Math.round(100*Math.max(0,Math.min(1,progress)))}%`;
+  }else if(stageIndex===0){
+    dom.circuitStatus.innerHTML='<b>Ready</b> · input |00⟩';
+  }else if(finished){
+    dom.circuitStatus.innerHTML='<b>Complete</b> · marked answer amplified';
+  }else{
+    dom.circuitStatus.innerHTML=`<b>Checkpoint ${stageIndex}/5</b> · ${names[stageIndex]} complete`;
+  }
+}
+function toggleCircuitDiagram(){
+  const collapsed=dom.wrap.classList.toggle('circuitCollapsed');
+  dom.circuitToggle.textContent=collapsed?'+':'−';
+  dom.circuitToggle.title=collapsed?'Expand circuit diagram':'Minimize circuit diagram';
+  dom.circuitToggle.setAttribute('aria-expanded',String(!collapsed));
+  requestAnimationFrame(layoutSimulationViews);
+}
 function targetLocation(q){return ['lower-left','upper-left','lower-right','upper-right'][q]||'';}
 function syncTargetUi(){
-  dom.targetButtons.forEach(button=>{const q=Number(button.dataset.target);const selected=q===params.target;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});
-  dom.targetSummary.innerHTML=`<b>Marked state</b>: |${QUADRANT_NAMES[params.target]}⟩ — ${targetLocation(params.target)} quadrant`;
-  dom.oracle.textContent=`2. Oracle: mark |${QUADRANT_NAMES[params.target]}⟩`;
+  dom.targetButtons.forEach(button=>{const q=Number(button.dataset.target);const selected=q===params.target;const isSingleGridSelector=Boolean(button.closest('#singleTargetBar'));button.classList.toggle('selected',selected&&isSingleGridSelector);button.setAttribute('aria-pressed',String(selected));});
+  dom.miniGrids.forEach(element=>element.classList.toggle('selected-grid',Number(element.dataset.gridTarget)===params.target));
+  dom.viewToggle.textContent=viewMode==='multi'?'Switch to single-grid view':'Switch to four-grid parallel view';
+  dom.viewToggle.setAttribute('aria-pressed',String(viewMode==='multi'));
+  dom.targetSummary.innerHTML=viewMode==='multi'?`<b>Parallel search</b>: all four marked states · selected details |${QUADRANT_NAMES[params.target]}⟩`:`<b>Marked state</b>: |${QUADRANT_NAMES[params.target]}⟩ — ${targetLocation(params.target)} quadrant`;
+  dom.oracle.textContent=viewMode==='multi'?'2. Oracle: mark each target':`2. Oracle: mark |${QUADRANT_NAMES[params.target]}⟩`;
+  syncCircuitDiagram();
 }
 function chooseTarget(q){
   q=Math.max(0,Math.min(3,q|0));
   if(activeSegment||q===params.target)return;
   params.target=q;
-  resetSimulation();
+  if(viewMode==='single')resetSimulation();else{restoreSelectedSimulation();syncButtons();updateDiagnostics(true);}
 }
-function syncButtons(){const busy=!!activeSegment;dom.prepare.disabled=busy||stageIndex!==0;dom.oracle.disabled=busy||stageIndex!==1;dom.inverse.disabled=busy||stageIndex!==2;dom.reference.disabled=busy||stageIndex!==3;dom.forward.disabled=busy||stageIndex!==4;dom.next.disabled=busy||stageIndex>=5;dom.full.disabled=busy;dom.targetButtons.forEach(button=>button.disabled=busy);syncTargetUi();}
-function updateStageStatus(){const stageNames=['Initialized in |00⟩','Preparation mixer complete','Oracle complete: target phase marked','Inverse mixer complete','Reference phase complete','Grover amplification complete'];const active=activeSegment?`<b>Operation</b>: ${segmentLabel(activeSegment)}`:`<b>Stage</b>: ${stageNames[stageIndex]}`;const checkpoint=activeSegment?'':'<br><b>Between operations</b>: state held fixed';dom.stage.innerHTML=`${active}${checkpoint}<br><b>Target</b>: |${QUADRANT_NAMES[params.target]}⟩ &nbsp; <b>Mixer quarter-beat</b>: ${fmt(MIX_TIME,4)}`;}
+function toggleViewMode(){if(activeSegment)return;viewMode=viewMode==='multi'?'single':'multi';for(const simulation of simulations){activateSimulation(simulation);createTrails();}restoreSelectedSimulation();layoutSimulationViews();resetSimulation();}
+function syncButtons(){const busy=!!activeSegment;dom.prepare.disabled=busy||stageIndex!==0;dom.oracle.disabled=busy||stageIndex!==1;dom.inverse.disabled=busy||stageIndex!==2;dom.reference.disabled=busy||stageIndex!==3;dom.forward.disabled=busy||stageIndex!==4;dom.next.disabled=busy||stageIndex>=5;dom.full.disabled=busy;dom.viewToggle.disabled=busy;dom.targetButtons.forEach(button=>button.disabled=busy);syncTargetUi();}
+function updateStageStatus(){const stageNames=['Initialized in |00⟩','Preparation mixer complete','Oracle complete: target phase marked','Inverse mixer complete','Reference phase complete','Grover amplification complete'];const active=activeSegment?`<b>Operation</b>: ${segmentLabel(activeSegment)}`:`<b>Stage</b>: ${stageNames[stageIndex]}`;const checkpoint=activeSegment?'':'<br><b>Between operations</b>: state held fixed';const viewDescription=viewMode==='multi'?'<b>Parallel view</b>: four independent searches':`<b>Target</b>: |${QUADRANT_NAMES[params.target]}⟩`;dom.stage.innerHTML=`${active}${checkpoint}<br>${viewDescription} &nbsp; <b>Mixer quarter-beat</b>: ${fmt(MIX_TIME,4)}`;updateMiniGridOutcomes();syncCircuitDiagram();}
 
 function diagnostics() {
   const w=readWaveData();const weight=DX*DX;let norm=0,maxRho=0;const amp=Array.from({length:4},()=>({re:0,im:0,p:0,phase:0}));const qp=[0,0,0,0];
   for(let j=0;j<GRID;j++)for(let i=0;i<GRID;i++){const k=j*GRID+i,re=w[4*k],im=w[4*k+1],rho=re*re+im*im;norm+=rho*weight;maxRho=Math.max(maxRho,rho);const q=(i>=(GRID-1)/2?2:0)+(j>=(GRID-1)/2?1:0);qp[q]+=rho*weight;for(let s=0;s<4;s++){amp[s].re+=basis[s][k]*re*weight;amp[s].im+=basis[s][k]*im*weight;}}
   for(const a of amp){a.p=a.re*a.re+a.im*a.im;a.phase=Math.atan2(a.im,a.re);}let logicalSum=amp.reduce((s,a)=>s+a.p,0);
   const pp=[0,0,0,0];const pdata=readParticles();for(let n=0;n<particle.count;n++){const x=pdata[4*n],y=pdata[4*n+1];const q=(x>=.5?2:0)+(y>=.5?1:0);pp[q]++;}for(let q=0;q<4;q++)pp[q]/=Math.max(1,particle.count);
-  rhoVisualMax=Math.max(1,maxRho*1.05);return{norm,amp,qp,pp,logicalSum,maxRho,targetFidelity:amp[params.target].p};
+  rhoVisualMax=Math.max(1,maxRho*1.05);return{norm,amp,qp,pp,logicalSum,maxRho,targetFidelity:amp[currentSimulation.target].p};
 }
-function updateDiagnostics(force=false){if(!force&&frameCount-lastDiagnosticsFrame<45)return;lastDiagnosticsFrame=frameCount;lastDiagnostics=diagnostics();const d=lastDiagnostics;dom.logical.innerHTML=d.amp.map((a,q)=>`<div class="logicalCell"><div class="logicalTop"><b>|${QUADRANT_NAMES[q]}⟩</b><span>${(100*a.p).toFixed(1)}%</span></div><div class="bar"><i style="width:${Math.min(100,100*a.p)}%"></i></div><div class="phase">phase ${fmt(a.phase/Math.PI,2)}π · particles ${(100*d.pp[q]).toFixed(1)}%</div></div>`).join('');dom.stats.innerHTML=`<b>Wave norm</b>: ${fmt(d.norm,5)} &nbsp; <b>logical weight</b>: ${(100*d.logicalSum).toFixed(1)}%<br><b>Target fidelity</b>: ${(100*d.targetFidelity).toFixed(1)}% &nbsp; <b>target-region particles</b>: ${(100*d.pp[params.target]).toFixed(1)}%<br><b>Simulation time</b>: ${fmt(simTime,4)} &nbsp; <b>Grid</b>: ${GRID}² RK4 GPU<br><b>Particles</b>: ${particle.count.toLocaleString()}`;}
+function updateMiniGridOutcomes(){for(const element of dom.miniGrids){const simulation=simulationForTarget(element.dataset.gridTarget),outcome=element.querySelector('.targetLocation');outcome.classList.remove('correct');if(stageIndex===5&&!activeSegment&&simulation.diagnostics){outcome.textContent=`✓ ${(100*simulation.diagnostics.targetFidelity).toFixed(1)}%`;outcome.classList.add('correct');}else if(activeSegment){const progress=activeSegment.type==='free'?activeSegment.elapsed/activeSegment.duration:activeSegment.frame/activeSegment.frames;outcome.textContent=`${Math.round(100*Math.max(0,Math.min(1,progress)))}%`;}else{outcome.textContent=targetLocation(simulation.target).toUpperCase();}}}
+function updateDiagnostics(force=false){if(!force&&frameCount-lastDiagnosticsFrame<45)return;lastDiagnosticsFrame=frameCount;for(const simulation of simulations){activateSimulation(simulation);simulation.diagnostics=diagnostics();}restoreSelectedSimulation();lastDiagnostics=currentSimulation.diagnostics;const d=lastDiagnostics;dom.logical.innerHTML=d.amp.map((a,q)=>`<div class="logicalCell"><div class="logicalTop"><b>|${QUADRANT_NAMES[q]}⟩</b><span>${(100*a.p).toFixed(1)}%</span></div><div class="bar"><i style="width:${Math.min(100,100*a.p)}%"></i></div><div class="phase">phase ${fmt(a.phase/Math.PI,2)}π · particles ${(100*d.pp[q]).toFixed(1)}%</div></div>`).join('');const gridDescription=viewMode==='multi'?`4 × ${GRID}² independent RK4 GPU waves`:`${GRID}² RK4 GPU wave`;const particleDescription=viewMode==='multi'?`${particle.count.toLocaleString()} per grid (${(particle.count*4).toLocaleString()} total)`:particle.count.toLocaleString();dom.stats.innerHTML=`<b>Selected wave norm</b>: ${fmt(d.norm,5)} &nbsp; <b>logical weight</b>: ${(100*d.logicalSum).toFixed(1)}%<br><b>Target fidelity</b>: ${(100*d.targetFidelity).toFixed(1)}% &nbsp; <b>target-region particles</b>: ${(100*d.pp[params.target]).toFixed(1)}%<br><b>Simulation time</b>: ${fmt(simTime,4)} &nbsp; <b>Grid</b>: ${gridDescription}<br><b>Particles</b>: ${particleDescription}`;updateMiniGridOutcomes();}
 
-function resetSimulation(update=true){operationQueue=[];activeSegment=null;stageIndex=0;simTime=0;simSteps=0;gateFlash=0;uploadInitialWave();rebuildParticles();normalizeWave();updateProgress();syncButtons();updateStageStatus();if(update)updateDiagnostics(true);}
+function resetSimulation(update=true){operationQueue=[];activeSegment=null;stageIndex=0;simTime=0;simSteps=0;gateFlash=0;paused=false;dom.pause.textContent='Pause';for(const simulation of simulations){activateSimulation(simulation);uploadInitialWave();rebuildParticles();normalizeWave();simulation.diagnostics=null;}restoreSelectedSimulation();lastDiagnostics=null;updateProgress();syncButtons();updateStageStatus();if(update)updateDiagnostics(true);}
 
 function addSection(text){const e=document.createElement('div');e.className='section';e.textContent=text;dom.controls.appendChild(e);}
 function addSlider(key,label,min,max,step,onChange=null){const row=document.createElement('div');row.className='row';const lab=document.createElement('label');lab.textContent=label;const inp=document.createElement('input');inp.type='range';inp.min=min;inp.max=max;inp.step=step;inp.value=params[key];const val=document.createElement('div');val.className='val';val.textContent=fmt(params[key]);inp.addEventListener('input',()=>{params[key]=parseFloat(inp.value);val.textContent=fmt(params[key]);});inp.addEventListener('change',()=>{onChange?.();updateDiagnostics(true);});row.append(lab,inp,val);dom.controls.appendChild(row);}
@@ -524,11 +649,11 @@ function buildUi(){addSection('Visualization');
   //addSlider('arrowLength','arrow length',.25,1.15,.05);
   //addSlider('arrowThickness','arrow thickness',.45,2.2,.05);
   addToggle('showParticles','show particles');
-  addToggle('showTrail','draw trails',clearTrails);
+  addToggle('showTrail','draw trails',clearAllTrails);
   //addSlider('visGain','density gain',.1,3,.05);
   //addSlider('visGamma','density gamma',.25,1.4,.05);
   addSlider('dotSize','particle size',2,14,.5);
-  addSlider('nParticles','particle count',1000,250000,1000,rebuildParticles);
+  addSlider('nParticles','particles / grid',1000,60000,1000,rebuildAllParticles);
   //addSlider('trailHalfLife','trail half-life',.005,.12,.005);
   //addSection('Numerics');addSlider('stepsPerFrame','steps / frame',4,80,1);
   //addSlider('dt','RK4 dt',.00001,.00004,.000001);
@@ -537,28 +662,31 @@ function buildUi(){addSection('Visualization');
 
 function installEvents(){
   dom.reset.addEventListener('click',()=>resetSimulation());
-  dom.pause.addEventListener('click',()=>{paused=!paused;dom.pause.textContent=paused?'Resume':'Pause';});
+  dom.pause.addEventListener('click',()=>{paused=!paused;dom.pause.textContent=paused?'Resume':'Pause';syncCircuitDiagram();});
   dom.prepare.addEventListener('click',opPrepare);dom.oracle.addEventListener('click',opOracle);dom.inverse.addEventListener('click',opInverse);dom.reference.addEventListener('click',opReference);dom.forward.addEventListener('click',opForward);dom.next.addEventListener('click',opNext);dom.full.addEventListener('click',opFull);
   dom.targetButtons.forEach(button=>button.addEventListener('click',()=>chooseTarget(Number(button.dataset.target))));
+  dom.viewToggle.addEventListener('click',toggleViewMode);
+  dom.circuitToggle.addEventListener('click',toggleCircuitDiagram);
   dom.minui.addEventListener('click',()=>{dom.uibody.hidden=!dom.uibody.hidden;dom.minui.textContent=dom.uibody.hidden?'+':'v';});
   window.addEventListener('keydown',e=>{if(e.key==='r'||e.key==='R')resetSimulation();if(e.code==='Space'){e.preventDefault();dom.pause.click();}});
   window.addEventListener('resize',resizeCanvas);
 }
 
-function drawFrame(advance=true){resizeCanvas();let advanced=0;if(advance&&!paused&&activeSegment)advanced=advanceOperation();if(advanced>0)trailStep(advanced);render();updateDiagnostics(false);updateStageStatus();frameCount++;}
+function drawFrame(advance=true){resizeCanvas();if(advance&&!paused&&activeSegment)advanceOperation();render();const glError=gl.getError();if(glError!==gl.NO_ERROR&&glError!==lastGlError){lastGlError=glError;console.error(`WebGL error: ${glError}`);}document.documentElement.dataset.glError=String(lastGlError);updateDiagnostics(false);updateStageStatus();frameCount++;}
 
 window.BohmianGrover2D={
   beginFrameRecording(){frameRecordingActive=true;},endFrameRecording(){frameRecordingActive=false;},isReady(){return simulationReady;},renderRecordingFrame(){if(simulationReady)drawFrame(true);},
-  state(){return{stageIndex,simTime,simSteps,target:params.target,busy:!!activeSegment,diagnostics:lastDiagnostics};},
+  state(){return{stageIndex,simTime,simSteps,viewMode,target:params.target,busy:!!activeSegment,diagnostics:lastDiagnostics,simulations:simulations.map(simulation=>({target:simulation.target,targetFidelity:simulation.diagnostics?.targetFidelity??null,particleTargetFraction:simulation.diagnostics?.pp?.[simulation.target]??null,norm:simulation.diagnostics?.norm??null}))};},
   reset(){resetSimulation();render();return this.state();},
   runFull(){opFull();return this.state();},
   advanceFrames(n=1){for(let i=0;i<n;i++)drawFrame(true);return this.state();},
-  setParams(next, doReset=false){Object.assign(params,next||{});if(doReset)resetSimulation();else{syncTargetUi();updateStageStatus();}return this.state();},
+  setParams(next, doReset=false){const previousCount=params.nParticles;Object.assign(params,next||{});if(doReset)resetSimulation();else{if(params.nParticles!==previousCount)rebuildAllParticles();syncTargetUi();updateStageStatus();updateDiagnostics(true);}return this.state();},
   setTarget(q){chooseTarget(q);return this.state();},
+  setViewMode(mode){if(!['multi','single'].includes(mode))throw new Error(`Unknown view mode: ${mode}`);if(mode!==viewMode)toggleViewMode();return this.state();},
   debugFreeSteps(n=1,dt=params.dt){for(let i=0;i<Math.max(0,Math.floor(n));i++)freeStep(dt);updateDiagnostics(true);return this.state();},
   debugPhase(angle=LOGICAL_PHASE_ANGLE,quadrant=params.target){applyLogicalPhase(angle,quadrant);normalizeWave();updateDiagnostics(true);return this.state();},
   diagnostics(){updateDiagnostics(true);return lastDiagnostics;},
 };
 
-async function main(){await loadShaders();buildPrograms();createWaveTargets();createParticleBuffers();buildUi();installEvents();resizeCanvas();resetSimulation();simulationReady=true;requestAnimationFrame(function loop(){if(!frameRecordingActive)drawFrame(true);requestAnimationFrame(loop);});}
+async function main(){await loadShaders();buildPrograms();for(const simulation of simulations){activateSimulation(simulation);createWaveTargets();createParticleBuffers();}restoreSelectedSimulation();buildUi();installEvents();resizeCanvas();resetSimulation();simulationReady=true;document.documentElement.dataset.webgl2='ready';requestAnimationFrame(function loop(){if(!frameRecordingActive)drawFrame(true);requestAnimationFrame(loop);});}
 main().catch(err=>{console.error(err);alert(String(err));});
