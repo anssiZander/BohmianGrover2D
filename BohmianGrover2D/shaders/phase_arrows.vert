@@ -10,6 +10,7 @@ uniform float uGain;
 uniform float uLengthScale;
 uniform float uThicknessScale;
 uniform float uRhoMin;
+uniform float uMixingSign;
 
 out vec2 vLocal;
 flat out vec4 vShape;   // total length, shaft radius, head length, head half-width
@@ -57,7 +58,7 @@ void main() {
   float densityMask = smoothstep(uRhoMin, max(8.0 * uRhoMin, uRhoMin + 1e-8), rho);
   float visible = densityMask * smoothstep(0.006, 0.03, strength);
 
-  vec2 dir = magnitude > 1e-10 ? gradS / magnitude : vec2(1.0, 0.0);
+  vec2 dir = magnitude > 1e-10 ? uMixingSign * gradS / magnitude : vec2(1.0, 0.0);
   vec2 normal = vec2(-dir.y, dir.x);
   float cell = usable / float(n);
 

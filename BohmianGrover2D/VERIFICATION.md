@@ -1,4 +1,37 @@
-# Verification — improved phase-gradient arrows
+# Verification — inverse mixing
+
+## Numerical sign reversal — 2026-09-24
+
+Branch `Inverse-Mixing` replaces the forward `3*MIX_TIME` inverse with a
+negative-Hamiltonian evolution lasting `MIX_TIME`. The existing RK4 wave step
+and particle step receive the same signed time step; elapsed time and trail
+decay remain positive. The guidance arrows use the matching sign. No appearance
+parameters, phase gates, preparation, or final forward mixer were changed.
+
+An external browser test fixture exercised the production WebGL2 shaders on
+the NVIDIA GeForce RTX 4070 Ti SUPER (ANGLE / D3D11), at the normal 128² wave
+resolution and time step 0.00003. All **40/40 checks passed**:
+
+- Every checkpoint and complete complex spatial field for all four targets
+  matched an independent evolution of the finite-difference sine spectrum.
+- The inverse took 0.1061303526 simulation units, equal to one mixer interval.
+- Both individual gate buttons and the queued full search used that interval.
+- The inverse particle step matched negative-time integration exactly; its
+  arrows had sign -1 and its trail fading factor remained between zero and one.
+- A forward/backward round trip recovered the full initial spatial wave.
+- No WebGL errors were reported.
+
+Maximum complex modal-amplitude error: `2.644e-7`; maximum spatial component
+error: `4.689e-6`; maximum norm error: `2.146e-7`. Minimum final target logical
+probability across all four targets: `0.9999999401`. These logical probabilities
+remain distinct from geometric quadrant or particle percentages.
+
+The automated fixture used 1,000 particles to keep repeated wave checks quick.
+The normal page was also inspected during inverse mixing and at its checkpoint
+with the unchanged 30,000-dot configuration, colors, trails, and arrow styling.
+JavaScript syntax checks and `git diff --check` also passed.
+
+## Earlier arrow-rendering verification
 
 ## Changes checked
 

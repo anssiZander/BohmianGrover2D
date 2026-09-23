@@ -96,6 +96,7 @@ let gateFlash = 0;
 let gateQuadrant = 0;
 let simTime = 0;
 let simSteps = 0;
+let mixingSign = 1;
 let frameCount = 0;
 let lastDiagnosticsFrame = -999;
 let lastDiagnostics = null;
@@ -172,7 +173,7 @@ function buildPrograms() {
   U.particleStamp = { point: uloc(programs.particleStamp,'uPointSize'), n: uloc(programs.particleStamp,'uNumParticles'), trail: uloc(programs.particleStamp,'uTrailWidth'), sigma: uloc(programs.particleStamp,'uDotSigma'), gain: uloc(programs.particleStamp,'uDotGain'), stamp: uloc(programs.particleStamp,'uStampGain') };
   U.densityStep = { prev: uloc(programs.densityStep,'uPrev'), fade: uloc(programs.densityStep,'uFade') };
   U.densityRender = { tex: uloc(programs.densityRender,'uDensity'), gain: uloc(programs.densityRender,'uGain'), gamma: uloc(programs.densityRender,'uGamma'), blend: uloc(programs.densityRender,'uBlendMode'), canvas: uloc(programs.densityRender,'uCanvasSize'), square: uloc(programs.densityRender,'uSquareBox') };
-  U.phaseArrows = { wave: uloc(programs.phaseArrows,'uWave'), canvas: uloc(programs.phaseArrows,'uCanvasSize'), grid: uloc(programs.phaseArrows,'uArrowGrid'), gain: uloc(programs.phaseArrows,'uGain'), length: uloc(programs.phaseArrows,'uLengthScale'), thickness: uloc(programs.phaseArrows,'uThicknessScale'), rhoMin: uloc(programs.phaseArrows,'uRhoMin') };
+  U.phaseArrows = { wave: uloc(programs.phaseArrows,'uWave'), canvas: uloc(programs.phaseArrows,'uCanvasSize'), grid: uloc(programs.phaseArrows,'uArrowGrid'), gain: uloc(programs.phaseArrows,'uGain'), length: uloc(programs.phaseArrows,'uLengthScale'), thickness: uloc(programs.phaseArrows,'uThicknessScale'), rhoMin: uloc(programs.phaseArrows,'uRhoMin'), sign: uloc(programs.phaseArrows,'uMixingSign') };
 }
 
 function makeTexture(w, h, internal = gl.RGBA32F, filter = gl.NEAREST) {
@@ -410,6 +411,7 @@ function renderPhaseArrows(){
   gl.uniform1f(U.phaseArrows.length,params.arrowLength);
   gl.uniform1f(U.phaseArrows.rhoMin,params.arrowRhoMin);
   gl.uniform1f(U.phaseArrows.thickness,params.arrowThickness);
+  gl.uniform1f(U.phaseArrows.sign,mixingSign);
   gl.bindVertexArray(vaoEmpty);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
@@ -424,7 +426,9 @@ function renderTopDown(){const trailTex=trails.flip?trails.texB:trails.texA;gl.b
 }
 function render(){renderTopDown();}
 
-function freeStep(dt){particleStep(dt,false);waveRk4(dt);simTime+=dt;simSteps++;}
+// Negative integration time applies -H to both the wave and its guiding current.
+// Elapsed playback time stays positive, including trail fading and gate progress.
+function freeStep(dt,sign=1){const signedDt=sign*dt;mixingSign=Math.sign(signedDt)||1;particleStep(signedDt,false);waveRk4(signedDt);simTime+=Math.abs(dt);simSteps++;}
 function segmentLabel(seg){return seg?.label||'Idle';}
 function startOperation(segments,finalStage){if(activeSegment||operationQueue.length)return;operationQueue=segments.map(s=>({...s,elapsed:0,frame:0}));operationFinalStage=finalStage;activeSegment=operationQueue.shift()||null;gateFlash=0;syncButtons();updateStageStatus();}
 function finishSegment(){normalizeWave();activeSegment=operationQueue.shift()||null;if(!activeSegment){stageIndex=operationFinalStage;gateFlash=0;updateDiagnostics(true);syncButtons();}updateStageStatus();}
@@ -432,7 +436,7 @@ function advanceOperation(){if(!activeSegment||paused)return 0;let advanced=0;
   if(activeSegment.type==='free'){
     const maxSteps=Math.max(1,Math.floor(params.stepsPerFrame));
     for(let i=0;i<maxSteps&&activeSegment.elapsed<activeSegment.duration-1e-12;i++){
-      const dt=Math.min(params.dt,activeSegment.duration-activeSegment.elapsed);freeStep(dt);activeSegment.elapsed+=dt;advanced+=dt;
+      const dt=Math.min(params.dt,activeSegment.duration-activeSegment.elapsed);freeStep(dt,activeSegment.sign??1);activeSegment.elapsed+=dt;advanced+=dt;
     }
     gateFlash=0;
     if(activeSegment.elapsed>=activeSegment.duration-1e-10)finishSegment();
@@ -457,7 +461,7 @@ function opOracle(){
 }
 function opInverse(){
   if(stageIndex!==2||activeSegment)return;
-  startOperation([{type:'free',duration:3*MIX_TIME,label:'3a. Diffuser: inverse mixer A†'}],3);
+  startOperation([{type:'free',duration:MIX_TIME,sign:-1,label:'3a. Diffuser: inverse mixer A† (−H)'}],3);
 }
 function opReference(){
   if(stageIndex!==3||activeSegment)return;
@@ -480,7 +484,7 @@ function opFull(){
   startOperation([
     {type:'free',duration:MIX_TIME,label:'1. Preparation mixer A'},
     {type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:params.target,label:`2. Oracle: phase mark |${QUADRANT_NAMES[params.target]}⟩`},
-    {type:'free',duration:3*MIX_TIME,label:'3a. Diffuser: inverse mixer A†'},
+    {type:'free',duration:MIX_TIME,sign:-1,label:'3a. Diffuser: inverse mixer A† (−H)'},
     {type:'phase',frames:PHASE_FRAMES,angle:LOGICAL_PHASE_ANGLE,quadrant:0,label:'3b. Diffuser: reference phase on |00⟩'},
     {type:'free',duration:MIX_TIME,label:'3c. Diffuser: forward mixer A'}
   ],5);
@@ -510,7 +514,7 @@ function diagnostics() {
 }
 function updateDiagnostics(force=false){if(!force&&frameCount-lastDiagnosticsFrame<45)return;lastDiagnosticsFrame=frameCount;lastDiagnostics=diagnostics();const d=lastDiagnostics;dom.logical.innerHTML=d.amp.map((a,q)=>`<div class="logicalCell"><div class="logicalTop"><b>|${QUADRANT_NAMES[q]}⟩</b><span>${(100*a.p).toFixed(1)}%</span></div><div class="bar"><i style="width:${Math.min(100,100*a.p)}%"></i></div><div class="phase">phase ${fmt(a.phase/Math.PI,2)}π · particles ${(100*d.pp[q]).toFixed(1)}%</div></div>`).join('');dom.stats.innerHTML=`<b>Wave norm</b>: ${fmt(d.norm,5)} &nbsp; <b>logical weight</b>: ${(100*d.logicalSum).toFixed(1)}%<br><b>Target fidelity</b>: ${(100*d.targetFidelity).toFixed(1)}% &nbsp; <b>target-region particles</b>: ${(100*d.pp[params.target]).toFixed(1)}%<br><b>Simulation time</b>: ${fmt(simTime,4)} &nbsp; <b>Grid</b>: ${GRID}² RK4 GPU<br><b>Particles</b>: ${particle.count.toLocaleString()}`;}
 
-function resetSimulation(update=true){operationQueue=[];activeSegment=null;stageIndex=0;simTime=0;simSteps=0;gateFlash=0;uploadInitialWave();rebuildParticles();normalizeWave();updateProgress();syncButtons();updateStageStatus();if(update)updateDiagnostics(true);}
+function resetSimulation(update=true){operationQueue=[];activeSegment=null;stageIndex=0;simTime=0;simSteps=0;mixingSign=1;gateFlash=0;uploadInitialWave();rebuildParticles();normalizeWave();updateProgress();syncButtons();updateStageStatus();if(update)updateDiagnostics(true);}
 
 function addSection(text){const e=document.createElement('div');e.className='section';e.textContent=text;dom.controls.appendChild(e);}
 function addSlider(key,label,min,max,step,onChange=null){const row=document.createElement('div');row.className='row';const lab=document.createElement('label');lab.textContent=label;const inp=document.createElement('input');inp.type='range';inp.min=min;inp.max=max;inp.step=step;inp.value=params[key];const val=document.createElement('div');val.className='val';val.textContent=fmt(params[key]);inp.addEventListener('input',()=>{params[key]=parseFloat(inp.value);val.textContent=fmt(params[key]);});inp.addEventListener('change',()=>{onChange?.();updateDiagnostics(true);});row.append(lab,inp,val);dom.controls.appendChild(row);}
@@ -518,7 +522,7 @@ function addToggle(key,label,onChange=null){const row=document.createElement('di
 function addSegment(key,label,values,onChange=null){const row=document.createElement('div');row.className='row';const lab=document.createElement('label');lab.textContent=label;const seg=document.createElement('div');seg.className='seg';const bs=values.map((v,i)=>{const b=document.createElement('button');b.textContent=v;b.addEventListener('click',()=>{params[key]=i;sync();onChange?.();});seg.appendChild(b);return b;});const sync=()=>bs.forEach((b,i)=>b.classList.toggle('selected',i===params[key]));sync();row.append(lab,seg,document.createElement('div'));row.lastChild.className='val';dom.controls.appendChild(row);}
 function buildUi(){addSection('Visualization');
   addToggle('showPhase','show phase');
-  addToggle('showPhaseArrows','phase-gradient arrows');
+  addToggle('showPhaseArrows','guidance arrows');
   addSlider('arrowGrid','arrow grid',8,40,1);
   //addSlider('arrowGain','arrow sensitivity',.01,.35,.005);
   //addSlider('arrowLength','arrow length',.25,1.15,.05);
@@ -549,7 +553,7 @@ function drawFrame(advance=true){resizeCanvas();let advanced=0;if(advance&&!paus
 
 window.BohmianGrover2D={
   beginFrameRecording(){frameRecordingActive=true;},endFrameRecording(){frameRecordingActive=false;},isReady(){return simulationReady;},renderRecordingFrame(){if(simulationReady)drawFrame(true);},
-  state(){return{stageIndex,simTime,simSteps,target:params.target,busy:!!activeSegment,diagnostics:lastDiagnostics};},
+  state(){return{stageIndex,simTime,simSteps,mixingSign,target:params.target,busy:!!activeSegment,diagnostics:lastDiagnostics};},
   reset(){resetSimulation();render();return this.state();},
   runFull(){opFull();return this.state();},
   advanceFrames(n=1){for(let i=0;i<n;i++)drawFrame(true);return this.state();},
