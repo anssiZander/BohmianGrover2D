@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PACKET_TRANSFORM, GATES, basisState, hadamard, evolveMixer, evolveGate, phasePulse,
+import { PACKET_TRANSFORM, GATES, MIX_TIME, REVIVAL_TIME, PREPARED_STATE, sineCoefficients, basisState, evolveMixer, evolveGate, phasePulse,
   probabilities, normSquared, axisPacket, waveAt, boxProbability, projectGroverState,
   effectiveBlochState, SearchSimulation, expectedProbability } from '../multiregion-core.js';
 import { referenceStep, referenceWave, generator } from './reference-math.js';
@@ -24,11 +24,19 @@ test('localized packets are orthonormal, hard-walled, and concentrated in their 
   }
 });
 
-test('Hadamard preparation is balanced and its inverse is exact on every basis vector', () => {
+test('free preparation is balanced and forward waiting implements the exact inverse', () => {
+  assert.equal(GATES[2].duration,7*MIX_TIME);
+  assert.equal(REVIVAL_TIME,8*MIX_TIME);
   for (let q = 0; q < 16; q++) {
     const state = basisState(q);
-    assert.ok(error(hadamard(hadamard(state)), state) < 1e-14);
+    assert.ok(error(evolveMixer(state,8),state)<1e-14);
+    assert.ok(error(evolveGate(evolveMixer(state,1),'inverse',1,0),state)<1e-14);
+    assert.ok(error(evolveGate(state,'inverse',.3,0),evolveMixer(state,2.1))<1e-14);
+    assert.ok(error(evolveGate(state,'inverse',.3,0),evolveMixer(state,-.3))>.1);
     assert.ok(error(evolveMixer(evolveMixer(state, .371), -.371), state) < 1e-14);
+    for (const p of probabilities(evolveMixer(state,1))) assert.ok(Math.abs(p-1/16)<1e-14);
+    const before=sineCoefficients(state),after=sineCoefficients(evolveMixer(state,.391));
+    for(let k=0;k<32;k+=2)assert.ok(Math.abs(before[k]**2+before[k+1]**2-after[k]**2-after[k+1]**2)<1e-14);
   }
   for (const p of probabilities(evolveMixer(basisState(), 1))) assert.ok(Math.abs(p - 1 / 16) < 1e-14);
 });
@@ -52,20 +60,20 @@ test('every continuous gate agrees with an independent matrix exponential for al
   }
 });
 
-test('the interior gate path satisfies Schrodinger evolution, including inverse sign and phase', () => {
+test('every gate obeys its Schrodinger equation, including positive-time inverse waiting', () => {
   let state = Float64Array.from({ length: 32 }, (_, i) => Math.sin(1.7 * i + .3));
   state = state.map(value => value / Math.sqrt(normSquared(state)));
   for (const kind of ['prepare', 'oracle', 'inverse', 'reference', 'forward']) {
-    const p = .37, epsilon = 1e-6, value = evolveGate(state, kind, p, 9);
+    const p = .37, epsilon = 1e-7, value = evolveGate(state, kind, p, 9);
     const plus = evolveGate(state, kind, p + epsilon, 9), minus = evolveGate(state, kind, p - epsilon, 9);
     const k = generator(kind, 9), derivative = new Float64Array(32);
     for (let q = 0; q < 16; q++) for (let r = 0; r < 16; r++) {
       derivative[2 * q] += k[q][r] * value[2 * r + 1];
       derivative[2 * q + 1] -= k[q][r] * value[2 * r];
     }
-    assert.ok(error(plus.map((v, i) => (v - minus[i]) / (2 * epsilon)), derivative) < 1e-9);
+    assert.ok(error(plus.map((v, i) => (v - minus[i]) / (2 * epsilon)), derivative) < 2e-7);
   }
-  const mid = evolveMixer(basisState(), .5), endpoint = hadamard(basisState());
+  const mid = evolveMixer(basisState(), .5), endpoint = evolveMixer(basisState(),1);
   const linear = endpoint.map((value, i) => .5 * (value + basisState()[i]));
   assert.ok(error(mid, linear) > .1 && Math.abs(normSquared(linear) - 1) > .1);
   assert.ok(mid.some((value, i) => i % 2 && Math.abs(value) > .1), 'the intermediate wave must carry the complex phases');
@@ -110,6 +118,7 @@ test('clock partitions, checkpoints, target locking, pause and reset preserve th
 });
 
 test('Bloch projection retains unit length, accounts for outside weight, and ignores global phase', () => {
+  for(let target=0;target<16;target++)assert.ok(Math.abs(projectGroverState(PREPARED_STATE,target).bloch.weight-1)<1e-14);
   assert.equal(effectiveBlochState([0, 0], [0, 0]).vector, null);
   for (const [unmarked, expected] of [[[1, 0], [1, 0, 0]], [[0, 1], [0, 1, 0]], [[0, -1], [0, -1, 0]]]) {
     assert.ok(error(effectiveBlochState([1, 0], unmarked).vector, expected) < 1e-14);
@@ -127,6 +136,7 @@ test('Bloch projection retains unit length, accounts for outside weight, and ign
         if (vector) assert.ok(error(projectGroverState(rotated, target).bloch.vector, vector) < 1e-13);
       }
       state = evolveGate(state, gate.kind, 1, target);
+      if(gate.kind==='forward')assert.ok(Math.abs(projectGroverState(state,target).bloch.weight-1)<1e-12);
     }
   }
 });

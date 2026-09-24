@@ -3,14 +3,17 @@
 export const SIDE = 4;
 export const STATE_COUNT = SIDE * SIDE;
 export const ITERATIONS = 3;
+export const MIX_TIME = 2.4;
+export const FREE_OMEGA = Math.PI / (4 * MIX_TIME); // E_1 / hbar, unit-length box.
+export const REVIVAL_TIME = 8 * MIX_TIME;
 export const LABELS = Array.from({ length: STATE_COUNT }, (_, q) => q.toString(2).padStart(4, '0'));
 export const GATES = Object.freeze([
-  { kind: 'prepare', name: 'Prepare balanced state', symbol: 'A', iteration: 0, duration: 2.4 },
+  { kind: 'prepare', name: 'Prepare · free evolution T', symbol: 'A', iteration: 0, duration: MIX_TIME },
   ...Array.from({ length: ITERATIONS }, (_, i) => [
     { kind: 'oracle', name: 'Oracle phase', symbol: 'Oω', iteration: i + 1, duration: 1.6 },
-    { kind: 'inverse', name: 'Inverse mixer', symbol: 'A†', iteration: i + 1, duration: 2.4 },
+    { kind: 'inverse', name: 'A† · forward wait 7T', symbol: 'A†', iteration: i + 1, duration: REVIVAL_TIME - MIX_TIME },
     { kind: 'reference', name: 'Reference phase', symbol: 'S₀', iteration: i + 1, duration: 1.6 },
-    { kind: 'forward', name: 'Forward mixer', symbol: 'A', iteration: i + 1, duration: 2.4 },
+    { kind: 'forward', name: 'Forward mixer · free evolution T', symbol: 'A', iteration: i + 1, duration: MIX_TIME },
   ]).flat(),
 ].map(Object.freeze));
 
@@ -29,35 +32,16 @@ export function basisState(q = 0) {
   return state;
 }
 
-// A = H_Had^(tensor 4), in the logical packet basis |x1 x0 y1 y0>.
-export function hadamard(state) {
-  const out = Float64Array.from(state);
-  for (let stride = 1; stride < STATE_COUNT; stride *= 2) {
-    for (let block = 0; block < STATE_COUNT; block += 2 * stride) {
-      for (let i = 0; i < stride; i++) for (let part = 0; part < 2; part++) {
-        const lo = 2 * (block + i) + part, hi = lo + 2 * stride;
-        const a = out[lo], b = out[hi];
-        out[lo] = a + b; out[hi] = a - b;
-      }
-    }
-  }
-  return out.map(value => value / Math.sqrt(STATE_COUNT));
-}
-
-// H_A = pi*hbar/(2*T) (I-A). Since A^2=I, the exact propagator is
-// U(p) = (I+A)/2 + exp(-i*pi*p) (I-A)/2. p is signed gate time / T.
-// The two terms are orthogonal eigenspace projections, not an image blend.
+// Exact free-box propagation: E_nm/hbar = FREE_OMEGA*(n^2+m^2).
+// p counts preparation intervals T. Production gates only use positive p.
 export function evolveMixer(state, p) {
-  const transformed = hadamard(state), out = new Float64Array(state.length);
-  const c = Math.cos(Math.PI * p), s = Math.sin(Math.PI * p);
-  for (let q = 0; q < STATE_COUNT; q++) {
-    const r = 2 * q, i = r + 1;
-    const minusRe = .5 * (state[r] - transformed[r]);
-    const minusIm = .5 * (state[i] - transformed[i]);
-    out[r] = .5 * (state[r] + transformed[r]) + c * minusRe + s * minusIm;
-    out[i] = .5 * (state[i] + transformed[i]) + c * minusIm - s * minusRe;
+  const modes = sineCoefficients(state);
+  for (let n = 0; n < SIDE; n++) for (let m = 0; m < SIDE; m++) {
+    const q = 2 * (SIDE*n+m), angle = Math.PI*p*((n+1)**2+(m+1)**2)/4;
+    const c = Math.cos(angle), s = Math.sin(angle), re = modes[q], im = modes[q+1];
+    modes[q] = c*re+s*im; modes[q+1] = c*im-s*re;
   }
-  return out;
+  return packetCoefficients(modes);
 }
 
 export function phasePulse(state, target, p) {
@@ -70,7 +54,8 @@ export function phasePulse(state, target, p) {
 
 export function evolveGate(state, kind, progress, target) {
   if (kind === 'prepare' || kind === 'forward') return evolveMixer(state, progress);
-  if (kind === 'inverse') return evolveMixer(state, -progress);
+  // U(8T)=I exactly, so the entire A-dagger animation advances under +H for 7T.
+  if (kind === 'inverse') return evolveMixer(state, 7*progress);
   if (kind === 'oracle') return phasePulse(state, target, progress);
   if (kind === 'reference') return phasePulse(state, 0, progress);
   throw new Error(`Unknown gate: ${kind}`);
@@ -91,6 +76,17 @@ export function sineCoefficients(state) {
       const weight = PACKET_TRANSFORM[x][n] * PACKET_TRANSFORM[y][m];
       const q = 2 * (SIDE * x + y), k = 2 * (SIDE * n + m);
       out[k] += weight * state[q]; out[k + 1] += weight * state[q + 1];
+    }
+  }
+  return out;
+}
+export function packetCoefficients(modes) {
+  const out = new Float64Array(2*STATE_COUNT);
+  for (let x = 0; x < SIDE; x++) for (let y = 0; y < SIDE; y++) {
+    for (let n = 0; n < SIDE; n++) for (let m = 0; m < SIDE; m++) {
+      const weight = PACKET_TRANSFORM[x][n]*PACKET_TRANSFORM[y][m];
+      const q = 2*(SIDE*x+y), k = 2*(SIDE*n+m);
+      out[q] += weight*modes[k]; out[q+1] += weight*modes[k+1];
     }
   }
   return out;
@@ -136,11 +132,16 @@ export function effectiveBlochState(marked, unmarked) {
   return { vector: [2 * (mr * ur + mi * ui) / weight, 2 * (mr * ui - mi * ur) / weight, (m - u) / weight],
     weight: Math.min(1, weight), conditionalMarked: m / weight };
 }
+export const PREPARED_STATE = evolveMixer(basisState(), 1);
 export function projectGroverState(state, target) {
-  const marked = [state[2 * target], state[2 * target + 1]], unmarked = [0, 0];
-  for (let q = 0; q < STATE_COUNT; q++) if (q !== target) {
-    unmarked[0] += state[2 * q] / Math.sqrt(STATE_COUNT - 1);
-    unmarked[1] += state[2 * q + 1] / Math.sqrt(STATE_COUNT - 1);
+  const marked = [0, 0], unmarked = [0, 0];
+  // Align each basis phase with s=A|0000>. The unmarked direction must retain
+  // those phases; an equal-real sum would project onto the wrong Grover plane.
+  for (let q = 0; q < STATE_COUNT; q++) {
+    const re = 4*(PREPARED_STATE[2*q]*state[2*q]+PREPARED_STATE[2*q+1]*state[2*q+1]);
+    const im = 4*(PREPARED_STATE[2*q]*state[2*q+1]-PREPARED_STATE[2*q+1]*state[2*q]);
+    if (q === target) { marked[0] = re; marked[1] = im; }
+    else { unmarked[0] += re / Math.sqrt(STATE_COUNT-1); unmarked[1] += im / Math.sqrt(STATE_COUNT-1); }
   }
   const bloch = effectiveBlochState(marked, unmarked);
   return { bloch, targetProbability: marked[0] ** 2 + marked[1] ** 2, outsideProbability: Math.max(0, 1 - bloch.weight) };

@@ -1,7 +1,7 @@
-# Grover Search 2D — MultiRegion
+# Grover Search 2D — MultiRegionFreeMixing
 
 A single continuous 2D wave encodes 16 logical outcomes in a 4×4 arrangement.
-This branch uses exact continuous unitary mode gates, displayed with the original
+This branch uses exact free-box mixers and ideal mode-projector phase gates, with the original
 rainbow phase palette, dark blue panels, cyan grid, and crimson target outline.
 Conserved-current arrows and guided yellow particles with trails show the
 spatial probability transport. The display remains a single search view.
@@ -30,7 +30,8 @@ render targets is required. No dependencies or build step are needed.
   marked probabilities at the completed diffuser checkpoints.
 - The effective Bloch sphere follows the actual complex amplitudes. Drag it or
   use its arrow keys to orbit; Home or Reset view restores the camera. Its gold
-  vector describes the normalized marked/equal-unmarked projection. The weight
+  vector describes the normalized marked/unmarked projection with the prepared
+  state's phases. The weight
   bar accounts for probability outside that subspace during individual gates.
 - **Start Recording** captures the wave canvas as WebM; panels are excluded.
 - **Current arrows**, **Particles**, and **Trails**, beneath the wave, toggle
@@ -76,40 +77,65 @@ to the original `(u_1 +/- u_2)/sqrt(2)` construction.
 
 The full wave is `psi(x,y,t) = sum_jk c_jk(t) phi_jk(x,y)`. It always lies in the
 specified 16-dimensional subspace. The initial state is `phi_00`, and preparation
-gives `c_jk = 1/4`, hence logical probability `1/16` in every mode. Equal logical
+gives `|c_jk| = 1/4`, hence logical probability `1/16` in every mode. Equal logical
 probabilities do not imply perfectly flat spatial density.
 
-## Exact gate dynamics
+## Exact free-box mixing and forward waiting
 
-Let `A = H_Had^(tensor 4)` in the logical packet basis. This is Hermitian and
-unitary: `A^dagger = A` and `A^2 = I`. Preparation and forward mixing use
-
-```text
-H_A = pi hbar (I - A) / (2T)
-U(p) = exp(-i H_A pT / hbar)
-     = (I+A)/2 + exp(-i pi p) (I-A)/2.
-```
-
-Here `p` is elapsed gate time divided by its duration. The two terms are the
-orthogonal positive/negative eigenspace projections of `A`. The implementation
-evaluates this exact exponential from the gate's initial complex amplitudes on
-every frame. It does not blend endpoint images, interpolate probabilities, or
-renormalize an interpolated vector. Inverse mixing uses `U(-p)`: the same endpoint
-operator, but the opposite continuous Hamiltonian evolution.
-
-Oracle and reference pulses are also exact at every intermediate time:
+During every mixing interval, the Hamiltonian is the ordinary hard-wall box:
 
 ```text
-U_q(p) = I + (exp(-i pi p) - 1) |q><q|.
+H_free = -hbar^2/(2m) (d_x^2 + d_y^2)
+E_nm = E_1 (n^2+m^2),    E_1 = pi^2 hbar^2/(2mL^2)
+b_nm(t) = b_nm(0) exp[-i E_1 (n^2+m^2)t/hbar].
 ```
 
-The oracle uses `q = target`; the reference uses `q = 0`. Preparation runs once,
-then each iteration runs `oracle -> A^dagger -> reference -> A`. The implemented
-diffuser `A (I-2|0><0|) A^dagger` differs from the conventional `2|s><s|-I` only
-by a global minus sign. The full spatial phase is displayed, including this sign.
+The implementation transforms the logical coefficients to the sine basis,
+applies these exact energy phases, and transforms back. Both axes evolve
+simultaneously. It includes the common phase as well as relative phases, and
+uses the continuum spectrum, not finite-difference eigenvalues or RK4 wave
+stepping. No image blending or probability interpolation is used.
 
-For one marked state among 16, the logical target probability after `k` iterations
-is `sin^2((2k+1) asin(1/4))`:
+Set `T = pi*hbar/(4*E_1)`. The first four one-axis eigenmodes then have phases
+`(z,-1,z,1)`, where `z = exp(-i*pi/4)`. In our packet basis:
+
+```text
+U_1D(T) = 1/2 [ z  -1   1   z ]
+               [ -1  z   z   1 ]
+               [  1  z   z  -1 ]
+               [  z  1  -1   z ]
+A = U_1D(T) tensor U_1D(T).
+```
+
+Every entry of A has magnitude 1/4, so preparation gives equal logical
+probabilities of 1/16, with definite relative phases. The prepared state is
+`s = A|0000>`, not the equal-real-amplitude state used by the Hadamard branch.
+
+The entire box spectrum revives at `T_rev = 2*pi*hbar/E_1 = 8T`. Therefore:
+
+```text
+A = U(T)
+A^dagger = U(7T), because U(7T) U(T) = U(8T) = I.
+```
+
+The inverse animation advances forward through all 7T under the same positive
+kinetic Hamiltonian. It is not a negative-time shortcut and is not sped up to
+fit one preparation interval. In playback units T = 2.4 seconds, the inverse
+lasts 16.8 seconds, and a complete search takes 69.6 seconds at speed 1.
+Changing the speed scales the common clock for all gates, particles, and trails.
+The 1.6-second oracle/reference pulses keep their existing duration.
+
+Oracle and reference operations remain the exact ideal pulses
+
+```text
+U_q(p) = I + (exp(-i*pi*p)-1) |q><q|.
+```
+
+Here `q = target` for the oracle and `q = 0` for the reference. The free
+Hamiltonian is not added during these ideal pulses. Preparation runs once,
+then each iteration is `oracle -> wait 7T -> reference -> wait T`.
+`A (I-2|0><0|) A^dagger` reflects about the actual prepared state, up to the
+usual global minus sign. Three iterations give these marked-mode probabilities:
 
 | Iterations | Target probability |
 | --- | ---: |
@@ -118,68 +144,58 @@ is `sin^2((2k+1) asin(1/4))`:
 | 2 | 90.844727% |
 | 3 | 96.131897% |
 
-The automatic run stops after three iterations. Standard pi-phase gates do not
-give exactly 100% for this state count.
+The effective Bloch sphere uses a phase-aligned marked vector and the
+normalized unmarked part of this same s. This keeps preparation and completed
+Grover iterations in the correct two-dimensional subspace. Intermediate
+individual gates can leave that subspace; the weight bar still shows this.
+The seven-times-longer inverse path is sampled more densely for its sphere
+trace, while the state arrow always uses the actual instantaneous amplitudes.
 
-This is an **ideal mode-coupling Hamiltonian**, not the free-box Hamiltonian from
-the four-state branch. The sine functions supply a spatial encoding; their
-kinetic-energy phases are not added during these gates. Gate durations (2.4 for
-mixers, 1.6 for phase pulses at speed 1) set the pedagogical playback time and
-corresponding effective coupling strength. No ordinary phase-gradient particle
-guidance is claimed for these spatially nonlocal operations.
+## Probability current and particles
 
-## Conserved probability flow
+During free mixing, including the forward-wait inverse, the arrows show the
+ordinary current and particles follow the Bohmian guidance law:
 
-The added flow leaves all gate amplitudes and the wave evolution unchanged.
-We explicitly choose the curl-free current
+```text
+j = (hbar/m) Im(conj(psi) grad psi)
+v = j / |psi|^2.
+```
+
+With a unit-length box and our clock, `E_1/hbar = pi/(4T)` and
+`hbar/m = 1/(2*pi*T)`. The GPU evaluates the exact 16-term sine sum, its spatial
+derivatives, and energy phases at every particle integration stage. This is
+ordinary free-box current, not an inverse-Laplacian substitute. It has zero
+normal wall flux and may have circulation. Wave coefficients evolve exactly;
+particle trajectories still have numerical integration error.
+
+The ideal nonlocal oracle and reference pulses retain the previous chosen
+curl-free transport:
 
 ```text
 rho = |psi|^2
-laplacian chi = -partial_t rho,   normal derivative of chi = 0 at the walls
-j = gradient chi,                v = j/rho.
+laplacian chi = -partial_t rho,  normal derivative of chi = 0 at the walls
+j = gradient chi,               v = j/rho.
 ```
 
-Thus `partial_t rho + divergence j = 0`, with zero flux through the outer
-walls. In this simply connected box, the Neumann problem fixes the current
-uniquely once the curl-free rule has been selected. It is also the current
-minimizing the integral of `|j|^2` among currents with the same divergence and
-normal boundary flux. Other choices can add divergence-free circulation.
-These are generalized probability-transport trajectories, not a claim that the
-nonlocal Hamiltonian singles out ordinary phase-gradient Bohmian paths.
+This preserves the phase-pulse density by the continuity equation. The
+Neumann solution fixes the current after choosing the curl-free rule; the
+nonlocal phase Hamiltonian does not uniquely specify these continuous paths.
+For these pulses only, `psi = F + exp(-i*pi*p)G`; their density derivative has
+cosine frequencies 0..8 in each axis. The finite Poisson sum is reconstructed
+once per pulse in 512x512 float textures. This is the same convention as the
+parent branch, based on
+[Struyve and Valentini, equations 5–12](https://arxiv.org/pdf/0808.0290), with
+reflecting walls.
 
-For each gate, write `psi(p) = F + exp(-i*theta) G`, with orthogonal projector
-components `F,G`, `theta = direction*pi*p`, and `p = t/T`. Then
+The same adaptive GPU integrator handles both currents, integrating
+`dx/ds = T_gate*j`, `dp/ds = rho`, with cubic dense output to hit the requested
+gate progress. It does not cap velocity, attract particles to the goal, or
+resample them during gates. Initial particles sample the input packet's Born
+density. There is no sign reversal of time or current in the inverse mixer.
 
-```text
-rho = |F|^2 + |G|^2 + Dc*cos(theta) + Ds*sin(theta)
-Dc = 2 Re(conj(F)*G), Ds = 2 Im(conj(F)*G)
-partial_t rho = (direction*pi/T) [-Dc*sin(theta) + Ds*cos(theta)].
-```
-
-Products of sine modes 1..4 contain only cosine frequencies 0..8 on each axis.
-The Poisson problem therefore has a finite analytic spectral solution: divide
-each nonconstant cosine coefficient of `partial_t rho` by
-`pi^2*(n^2+m^2)` to get the corresponding coefficient of `chi`. The constant
-source coefficient is zero by unitarity. We differentiate this sum analytically
-to obtain `j`; there is no screen-image differencing or iterative Poisson solve.
-This construction follows the inverse-Laplacian current described by
-[Struyve and Valentini, equations 5–12](https://arxiv.org/pdf/0808.0290), adapted
-to the reflecting boundary of our square.
-
-The two current fields and complex `F,G` fields are reconstructed in 512×512
-float textures once per gate. Both arrows and particles sample these fields.
-Particles use adaptive embedded Runge–Kutta integration on the GPU. To avoid
-division by tiny density near nodes, we integrate the equivalent equations
-`dx/ds = T*j`, `dp/ds = rho`, and intersect the resulting path with the requested
-gate time using cubic dense output. No velocity cap, attraction toward the
-goal, particle respawning, or resampling during gates is used. Initial positions
-sample the actual input packet's density through its inverse CDF.
-
-Particle trajectories, GPU texture interpolation, and their finite ensemble
-have numerical/sampling error; they are tested against the continuous wave.
-Pause freezes the instantaneous arrows, positions, and trail history. Manual
-gate checkpoints hold everything still. The existing recording clock advances
-the wave and particles together, with all visible overlays in the capture.
+Pause and manual checkpoints freeze the wave, instantaneous arrows, positions,
+and trail history. This is an inspection hold, not continued physical free
+evolution between operations. The recording clock advances all layers together.
 
 ## Implementation and verification
 
@@ -192,7 +208,8 @@ the wave and particles together, with all visible overlays in the capture.
 - `grover-geometry.js`: the interactive sphere, driven by those same amplitudes.
 - `probability-flow.js`: exact density-source/Poisson coefficients and Born
   sampling. `flow-renderer.js` and the `flow_*` shaders: GPU field reconstruction,
-  adaptive particle integration, current arrows, and fading trails.
+  adaptive particle integration, free/phase currents, and fading trails. The free
+  field probe reads back the same analytic GPU current used by the particles.
 
 Legacy wave solvers remain unloaded. The original particle fragment shader and
 arrow fragment shader are reused to preserve their color and edge treatment.

@@ -123,11 +123,11 @@ function syncUi() {
   }
   const descriptions = {
     input: 'Begin in one localized mode. Prepare the balanced state to start the search.',
-    prepare: 'Amplitude spreads coherently into all 16 modes. Preparation ends at 6.25% in each mode.',
+    prepare: 'Free-box evolution for T prepares 6.25% in each logical mode, with definite relative phases.',
     oracle: 'Only the marked mode changes phase. Its probability stays fixed while its contribution interferes differently in space.',
-    inverse: 'The exact inverse mixer brings the state into the reference basis.',
+    inverse: 'Keep evolving forward under the same free Hamiltonian for 7T. The full revival at 8T makes this A†.',
     reference: 'The |0000⟩ coefficient turns through π while every other logical coefficient stays fixed.',
-    forward: 'The forward mixer completes the reflection. Unmarked contributions cancel and the marked mode grows.',
+    forward: 'Free evolution for T completes the reflection. Unmarked contributions cancel and the marked mode grows.',
   };
   dom.gateDescription.textContent = complete ? 'The best standard Grover stopping point: 96.1% marked-mode probability after three iterations.' : descriptions[kind];
   const stepKey = `${simulation.revision}/${target}/${gate?.index ?? -1}`;
@@ -140,7 +140,8 @@ function syncUi() {
   if (flow) {
     const stats = flow.statistics(target, progress, !busy || simulation.paused);
     dom.particleProbability.textContent = formatProbability(stats.boxProbability);
-    dom.flowStatus.textContent = `${stats.count.toLocaleString()} guided particles · sampled spatial probability`;
+    const model = ['prepare','inverse','forward'].includes(kind) ? 'Bohmian free-box current' : 'conserved phase-gate transport';
+    dom.flowStatus.textContent = `${stats.count.toLocaleString()} particles · ${model}`;
     document.documentElement.dataset.particleFailures = String(stats.failures);
     document.documentElement.dataset.particleLag = String(stats.maxLag);
   }
@@ -281,7 +282,7 @@ const api = {
   reset, setTarget: chooseTarget, startNext, runFull, togglePause,
   setParticleCount,
   readParticles: () => flow.readParticles(),
-  readFlow: () => { if (simulation.active) flow.prepare(simulation.active, simulation.target); return flow.readField(); },
+  readFlow: () => { if (simulation.active) flow.prepare(simulation.active, simulation.target); return flow.readField(simulation.active?.progress ?? 1); },
   particleStats: () => flow.statistics(simulation.target, simulation.active?.progress ?? (simulation.last ? 1 : 0), true),
   setSpeed(value) { params.speed = Math.max(.1, Math.min(3, Number(value) || 1)); dom.speed.value = params.speed; dom.speedValue.textContent = `${params.speed.toFixed(2)}×`; },
   advanceTime(seconds) { advance(seconds); return this.state(); },

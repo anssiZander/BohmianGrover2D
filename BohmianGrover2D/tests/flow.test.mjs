@@ -6,7 +6,7 @@ import { referenceStep, referenceWave } from './reference-math.js';
 
 let maxSourceError=0,maxDivergenceError=0,maxFluxError=0;
 test('spectral current conserves the independently evolved density for every gate and target',()=>{
-  const h=1e-5;
+  const h=1e-6;
   for(let target=0;target<16;target++) {
     let state=basisState();
     for(const gate of GATES) {
@@ -28,9 +28,11 @@ test('spectral current conserves the independently evolved density for every gat
   }
 });
 
-test('current is curl-free and carries zero normal flux at the outer walls',()=>{
+test('all currents have zero wall flux and phase-gate transport is curl-free',()=>{
   const state=Float64Array.from({length:32},(_,i)=>Math.sin(i*1.73)/4);
-  const f=gateFlow(state,'inverse',9,2.4),h=1e-5;
+  const h=1e-5;
+  for(const gate of GATES.slice(0,5)) {
+  const f=gateFlow(state,gate.kind,9,gate.duration);
   for(const p of [.1,.37,.9]) for(const t of [.04,.2,.41,.68,.97]) {
     assert.ok(Math.abs(flowAt(f,0,t,p).current[0])<1e-13);
     assert.ok(Math.abs(flowAt(f,1,t,p).current[0])<1e-13);
@@ -38,11 +40,12 @@ test('current is curl-free and carries zero normal flux at the outer walls',()=>
     assert.ok(Math.abs(flowAt(f,t,1,p).current[1])<1e-13);
     const curl=(flowAt(f,t+h,.43,p).current[1]-flowAt(f,t-h,.43,p).current[1]
       -flowAt(f,t,.43+h,p).current[0]+flowAt(f,t,.43-h,p).current[0])/(2*h);
-    assert.ok(Math.abs(curl)<2e-7);
+    if(f.mode==='phase')assert.ok(Math.abs(curl)<2e-7);
+  }
   }
 });
 
-test('complex inputs, oracle interference, and reversed mixers retain the correct current sign',()=>{
+test('complex inputs and forward inverse waiting use the correct physical current',()=>{
   let state=Float64Array.from({length:32},(_,i)=>Math.cos(.87*i)+Math.sin(1.73*i));
   const norm=Math.sqrt(state.reduce((s,v)=>s+v*v,0));state=state.map(v=>v/norm);
   for(const gate of GATES.slice(0,5)) {
@@ -52,13 +55,21 @@ test('complex inputs, oracle interference, and reversed mixers retain the correc
     const rate=(b[0]**2+b[1]**2-a[0]**2-a[1]**2)/(2*h*gate.duration);
     assert.ok(Math.abs(flowAt(f,.39,.58,p).drho-rate)<1e-7);
   }
-  const forward=gateFlow(state,'forward',6,2.4),inverse=gateFlow(state,'inverse',6,2.4);
-  const a=flowAt(forward,.39,.58,-.37),b=flowAt(inverse,.39,.58,.37);
-  assert.ok(Math.hypot(a.current[0]+b.current[0],a.current[1]+b.current[1])<1e-13);
+  const forward=gateFlow(state,'forward',6,2.4),inverse=gateFlow(state,'inverse',6,16.8);
+  const a=flowAt(forward,.39,.58,.37),b=flowAt(inverse,.39,.58,.37/7);
+  assert.ok(Math.hypot(a.current[0]-b.current[0],a.current[1]-b.current[1])<1e-13);
+  // Independent spatial phase-gradient current from finite-difference waves.
+  const p=.23,h=1e-6,psi=referenceWave(referenceStep(state,'prepare',p,6),.39,.58);
+  for(const axis of [0,1]) {
+    const point=[.39,.58],plus=[...point],minus=[...point];plus[axis]+=h;minus[axis]-=h;
+    const c=referenceStep(state,'prepare',p,6),wp=referenceWave(c,...plus),wm=referenceWave(c,...minus);
+    const j=(psi[0]*(wp[1]-wm[1])-psi[1]*(wp[0]-wm[0]))/(2*h*2*Math.PI*2.4);
+    assert.ok(Math.abs(flowAt(forward,...point,p).current[axis]-j)<1e-8);
+  }
 });
 
 test('net current through a region boundary equals its actual probability gain',()=>{
-  let state=basisState();const target=6,p=.41,h=1e-5,intervals=256;
+  let state=basisState();const target=6,p=.41,h=1e-6,intervals=256;
   for(const gate of GATES) {
     const f=gateFlow(state,gate.kind,target,gate.duration);
     for(const q of [0,6,15]) {

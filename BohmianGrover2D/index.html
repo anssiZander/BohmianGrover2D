@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Grover Search 2D — 16 Regions</title>
+  <title>Grover Search 2D — 16 Regions · Free Mixing</title>
   <link rel="icon" href="data:,"/>
   <link rel="stylesheet" href="./styles.css"/>
 </head>
 <body>
 <div id="wrap">
   <aside id="ui" class="panel">
-    <div class="head"><h3>Grover Search · 4×4</h3><button id="minui" class="mini" aria-expanded="true" aria-label="Collapse controls">−</button></div>
+    <div class="head"><h3>Grover 4×4 · Free mixing</h3><button id="minui" class="mini" aria-expanded="true" aria-label="Collapse controls">−</button></div>
     <div id="uibody">
       <div class="section">Choose the goal box</div>
       <div id="goalGrid" role="group" aria-label="Select one of 16 marked modes in the same layout as the wave"></div>
@@ -19,7 +19,7 @@
       <div class="ops">
         <button id="prepare">Prepare balanced state</button>
         <button id="oracle">Oracle · |1111⟩</button>
-        <button id="inverse">Inverse mixer A†</button>
+        <button id="inverse">A† · forward wait 7T</button>
         <button id="reference">Reference phase |0000⟩</button>
         <button id="forward">Forward mixer A</button>
         <button id="next">Apply next operation</button>
@@ -45,7 +45,7 @@
   </aside>
 
   <main id="stage">
-    <header id="waveHeader"><div><span class="eyebrow">ONE 2D WAVE · 16 LOGICAL MODES</span><h1>Amplitude amplification</h1></div><div class="targetBadge"><span id="waveTarget">MARKED |1111⟩</span><b id="waveProbability">0.0%</b></div></header>
+    <header id="waveHeader"><div><span class="eyebrow">FREE BOX EVOLUTION · 16 LOGICAL MODES</span><h1>Amplitude amplification</h1></div><div class="targetBadge"><span id="waveTarget">MARKED |1111⟩</span><b id="waveProbability">0.0%</b></div></header>
     <div id="waveArea"><canvas id="c" aria-label="Continuous two-dimensional probability wave with 16 outcome regions"></canvas><div id="waveLabels" aria-hidden="true"></div><div id="loading">Preparing the wave…</div><div id="error" role="alert" hidden></div></div>
     <footer id="waveFooter"><p id="gateDescription"></p><div class="flowToggles" role="group" aria-label="Probability flow overlays"><button id="currentToggle" aria-pressed="true">Current arrows</button><button id="particlesToggle" aria-pressed="true">Particles</button><button id="trailsToggle" aria-pressed="true">Trails</button></div><span>Hue = phase · arrows = probability current · dots follow j / ρ</span></footer>
   </main>
@@ -62,7 +62,7 @@
 <line class="circuitWireGlow" x1="90" y1="117" x2="812" y2="117"/><line class="circuitWire" x1="90" y1="117" x2="812" y2="117"/><text class="circuitInput" x="6" y="123">|0⟩</text><text class="circuitBit" x="51" y="121">y₀</text>
           <g class="circuitGate future" data-circuit-kind="prepare"><rect class="gateBox" x="112" y="23" width="82" height="114" rx="9"/><text class="gateText" x="153" y="87">A</text><text class="gateCaption" x="153" y="155">PREPARE</text><text class="gateTick" x="179" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="oracle"><rect class="gateBox" x="231" y="23" width="82" height="114" rx="9"/><text class="gateText" x="272" y="87">Oω</text><text class="gateCaption" x="272" y="155">ORACLE</text><text class="gateTick" x="298" y="39">✓</text></g>
-<g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text class="gateText" x="408" y="87">A†</text><text class="gateCaption" x="408" y="155">INVERSE</text><text class="gateTick" x="434" y="39">✓</text></g>
+<g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text class="gateText" x="408" y="87">A†</text><text class="gateCaption" x="408" y="155">WAIT 7T</text><text class="gateTick" x="434" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">S₀</text><text class="gateCaption" x="527" y="155">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="forward"><rect class="gateBox" x="605" y="23" width="82" height="114" rx="9"/><text class="gateText" x="646" y="87">A</text><text class="gateCaption" x="646" y="155">FORWARD</text><text class="gateTick" x="672" y="39">✓</text></g>
           <path class="diffuserBrace" d="M355 166v6h344v-6"/><text class="diffuserLabel" x="527" y="186">DIFFUSER D = A S₀ A†</text>
@@ -122,7 +122,7 @@
       </figure>
     </details>
       <div class="phaseLegend" aria-label="Phase color legend"><div class="phaseWheel" role="img" aria-label="Rainbow phase wheel"></div><div class="phaseLabels"><b>Phase hue</b><br>red: 0<br>yellow-green: +π/2<br>cyan: ±π<br>violet-blue: −π/2</div></div>
-      <details class="theory"><summary>About the wave and gates</summary><p>Each box labels an orthogonal logical mode built from four sine eigenmodes along each axis. Packets overlap, so the probability of a logical mode differs from probability inside its geometrical box.</p><p>The bit order is |x₁x₀y₁y₀⟩. Columns increase left to right; rows increase bottom to top. The initial mode is |0000⟩.</p><div class="math">A = H<sub>Had</sub><sup>⊗4</sup><br>ℋ<sub>A</sub> = πℏ(I − A)/(2T)</div><p>Preparation and forward mixing use exp(−iℋ<sub>A</sub>t/ℏ); inverse mixing uses the opposite sign. Phase gates use exact mode-projector exponentials. These are ideal mode operations, rather than free-box propagation. The wave evolves unitarily at every instant.</p><p>Three standard Grover iterations give 96.1319% marked-mode probability. All gates and the wave hold still at checkpoints and when paused.</p><div class="math">j = ∇χ &nbsp; · &nbsp; ∇²χ = −∂ρ/∂t<br>Particle velocity: v = j / ρ</div><p>The arrows show a conserved spatial current derived from the exact density change, with zero flow through the outer walls. We choose the curl-free solution. This is a generalized probability-transport model; the nonlocal gate Hamiltonian does not uniquely determine continuous particle paths.</p><p>Particle fractions sample the spatial density and should track “Inside goal box.” Arrow length indicates current strength, with a compressed display scale. Pause freezes the instantaneous arrows and all trajectories for inspection.</p></details>
+      <details class="theory"><summary>About the wave and gates</summary><p>Each box labels an orthogonal logical mode built from four sine eigenmodes along each axis. Packets overlap, so logical-mode probability differs from probability inside its geometrical box.</p><p>The bit order is |x₁x₀y₁y₀⟩. Columns increase left to right; rows increase bottom to top. The input is |0000⟩.</p><div class="math">ℋ = −ℏ²∇²/(2m)<br>A = U(T), &nbsp; A† = U(7T), &nbsp; U(8T) = I</div><p>Preparation and forward mixing wait for T = πℏ/(4E₁). The inverse waits forward for 7T under the same positive kinetic Hamiltonian. T is 2.4 gate-time seconds; 7T is 16.8. Both axes evolve simultaneously.</p><p>Preparation gives equal probabilities with definite relative phases. The Bloch sphere uses those phases in its marked/unmarked basis. Oracle and reference pulses remain ideal mode-projector phase operations. Three iterations give 96.1319% marked-mode probability.</p><div class="math">Free mixing: j = (ℏ/m) Im(ψ*∇ψ)<br>Phase pulses: j = ∇χ, &nbsp; ∇²χ = −∂ρ/∂t<br>Particle velocity: v = j / ρ</div><p>During free evolution the arrows and particles use the ordinary Bohmian current. During the ideal nonlocal phase pulses they use the chosen conserved curl-free transport. Every stage has zero normal flux at the outer walls.</p><p>Compare particle fractions with “Inside goal box.” Arrow lengths show current strength on a compressed scale. Pause and manual gate checkpoints hold the wave, current, particles, and trails still for inspection.</p></details>
     </section>
   </aside>
 </div>

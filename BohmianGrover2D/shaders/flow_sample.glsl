@@ -1,5 +1,10 @@
 // Shared by particle integration and the current arrows. Manual bilinear
 // sampling also works on WebGL2 devices without float-linear filtering.
+uniform sampler2D uWaveParts;
+uniform sampler2D uCurrentParts;
+uniform int uFree;
+uniform vec2 uFreeCoefficients[16];
+uniform float uFreeSpan;
 vec4 flowSample(sampler2D tex,vec2 uv) {
   ivec2 last=textureSize(tex,0)-1;
   vec2 p=clamp(uv,0.0,1.0)*vec2(last);ivec2 a=ivec2(floor(p)),b=min(a+1,last);
@@ -13,4 +18,30 @@ vec2 flowPsi(vec4 parts,float angle) {
 }
 vec2 flowCurrent(vec4 parts,float angle,float rate) {
   return rate*(-sin(angle)*parts.xy+cos(angle)*parts.zw);
+}
+// Exact sine sum and its spatial derivatives at every integrator stage.
+// Returns T*j, rho, phase. uFreeSpan=E1*T_gate/hbar is positive for ALL mixers.
+vec4 freeState(vec2 uv,float progress,out vec2 psi) {
+  const float PI=3.141592653589793;
+  vec4 n=vec4(1,2,3,4),sx=sin(PI*uv.x*n),sy=sin(PI*uv.y*n);
+  vec4 dx=PI*n*cos(PI*uv.x*n),dy=PI*n*cos(PI*uv.y*n);
+  vec4 co=cos(uFreeSpan*progress*n*n),si=sin(uFreeSpan*progress*n*n);
+  psi=vec2(0);vec2 gx=vec2(0),gy=vec2(0);
+  for(int x=0;x<4;x++)for(int y=0;y<4;y++) {
+    float c=co[x]*co[y]-si[x]*si[y],s=si[x]*co[y]+co[x]*si[y];
+    vec2 a=uFreeCoefficients[4*x+y],b=vec2(c*a.x+s*a.y,c*a.y-s*a.x);
+    psi+=2.0*sx[x]*sy[y]*b;gx+=2.0*dx[x]*sy[y]*b;gy+=2.0*sx[x]*dy[y]*b;
+  }
+  vec2 current=(2.0*uFreeSpan/(PI*PI))*vec2(psi.x*gx.y-psi.y*gx.x,psi.x*gy.y-psi.y*gy.x);
+  float rho=dot(psi,psi);
+  return vec4(current,rho,rho>1e-20?atan(psi.y,psi.x):0.0);
+}
+vec4 flowState(vec2 uv,float progress) {
+  vec2 psi;
+  if(uFree==1) return freeState(uv,progress,psi);
+  float angle=3.141592653589793*progress;
+  psi=flowPsi(flowSample(uWaveParts,uv),angle);
+  float rho=dot(psi,psi);
+  return vec4(flowCurrent(flowSample(uCurrentParts,uv),angle,3.141592653589793),rho,
+    rho>1e-20?atan(psi.y,psi.x):0.0);
 }

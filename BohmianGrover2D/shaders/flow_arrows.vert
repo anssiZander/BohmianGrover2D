@@ -1,10 +1,8 @@
 #version 300 es
 precision highp float;
 precision highp sampler2D;
-uniform sampler2D uWaveParts;
-uniform sampler2D uCurrentParts;
-uniform float uAngle;
-uniform float uRate;
+uniform float uProgress;
+uniform float uDuration;
 uniform float uGain;
 uniform int uArrowGrid;
 out vec2 vLocal;
@@ -16,7 +14,8 @@ flat out float vPhase;
 void main() {
   int n=uArrowGrid;
   vec2 center=(vec2(float(gl_InstanceID%n),float(gl_InstanceID/n))+.5)/float(n);
-  vec2 current=flowCurrent(flowSample(uCurrentParts,center),uAngle,uRate);
+  vec4 field=flowState(center,uProgress);
+  vec2 current=field.xy/uDuration;
   float magnitude=length(current),strength=1.0-exp(-uGain*magnitude);
   vec2 dir=magnitude>1e-12?current/magnitude:vec2(1.0,0.0),normal=vec2(-dir.y,dir.x);
   float cell=1.0/float(n),len=cell*.83*max(strength,.035);
@@ -27,6 +26,5 @@ void main() {
   gl_Position=vec4(2.0*pos-1.0,0.0,1.0);
   vLocal=local;vShape=vec4(len,radius,head,width);
   vAlpha=smoothstep(.002,.045,strength);vStrength=strength;
-  vec2 psi=flowPsi(flowSample(uWaveParts,center),uAngle);
-  vPhase=dot(psi,psi)>1e-20?atan(psi.y,psi.x):0.0;
+  vPhase=field.w;
 }

@@ -4,9 +4,9 @@ const clamp01 = value => Math.max(0, Math.min(1, value));
 const gateNames = { input: 'Input |0000⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
 const descriptions = {
   input: 'Start in the lower-left logical packet |0000⟩. Preparation will spread its amplitude over all 16 modes.',
-  prepare: 'The exact unitary mixer creates equal amplitudes in all 16 modes. The cyan point marks the prepared state |s⟩.',
+  prepare: 'Free evolution creates equal probabilities with definite relative phases in all 16 modes. The cyan point marks this prepared state |s⟩.',
   oracle: 'The oracle turns the marked amplitude through π. All logical probabilities stay fixed during this phase gate.',
-  inverse: 'The inverse unitary follows the opposite Hamiltonian sign. The normalized projection stays on the sphere; its weight can change.',
+  inverse: 'A† is reached by continuing forward under the free Hamiltonian for 7T. The projection follows the full intervening evolution.',
   reference: 'A π phase pulse on |0000⟩ is the central operation of the diffuser.',
   forward: 'The forward mixer completes this Grover iteration. Interference increases the marked amplitude.',
 };
@@ -105,9 +105,10 @@ export function createGroverGeometry(root) {
     const nextCurveKey = stepKey;
     if (nextCurveKey !== curveKey) {
       curveKey = nextCurveKey;
-      samples = Array.from({ length: 129 }, (_, i) => projectGroverState(kind === 'input' ? startAmplitudes : evolveGate(startAmplitudes, kind, i / 128, target), target).bloch.vector);
+      const count = kind === 'inverse' ? 896 : 128;
+      samples = Array.from({ length: count+1 }, (_, i) => projectGroverState(kind === 'input' ? startAmplitudes : evolveGate(startAmplitudes, kind, i / count, target), target).bloch.vector);
     }
-    const prefix = samples.slice(0, Math.floor(progress * 128) + 1);
+    const prefix = samples.slice(0, Math.floor(progress * (samples.length-1)) + 1);
     prefix.push(state.bloch.vector);
     const trace = kind !== 'input' ? hemispherePaths(prefix) : { front: '', back: '' };
     nodes.frontTrace.setAttribute('d', trace.front); nodes.backTrace.setAttribute('d', trace.back);

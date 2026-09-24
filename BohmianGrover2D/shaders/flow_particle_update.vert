@@ -2,21 +2,16 @@
 precision highp float;
 precision highp sampler2D;
 layout(location=0) in vec4 aState;
-uniform sampler2D uWaveParts;
-uniform sampler2D uCurrentParts;
-uniform float uDirection;
 uniform float uEnd;
 uniform int uNewGate;
 out vec4 nextState;
 // FLOW_SAMPLE
 bool inside(vec2 p) {return all(greaterThan(p,vec2(0.0)))&&all(lessThan(p,vec2(1.0)));}
 vec3 tangent(vec3 z) {
-  float omega=uDirection*3.141592653589793,angle=omega*z.z;
-  vec2 psi=flowPsi(flowSample(uWaveParts,z.xy),angle);
   // Integrate dx/ds = T*j, dp/ds = rho, so dx/dp = T*j/rho.
   // This time reparameterization crosses low-density regions without dividing
   // by rho, capping speed, or changing the prescribed trajectories.
-  return vec3(flowCurrent(flowSample(uCurrentParts,z.xy),angle,omega),dot(psi,psi));
+  return flowState(z.xy,z.z).xyz;
 }
 void main() {
   vec3 z=vec3(aState.xy,uNewGate==1?0.0:aState.z);

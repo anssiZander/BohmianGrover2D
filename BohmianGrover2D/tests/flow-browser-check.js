@@ -45,8 +45,8 @@ async function run() {
     for(let x=0;x<=12;x++)for(let y=0;y<=12;y++) {
       const ix=Math.round(x*(data.grid-1)/12),iy=Math.round(y*(data.grid-1)/12),k=4*(iy*data.grid+ix);
       const at=flowAt(reference,ix/(data.grid-1),iy/(data.grid-1),progress),v=data.current,w=data.wave;
-      const j=[rate*(-s*v[k]+c*v[k+2]),rate*(-s*v[k+1]+c*v[k+3])];
-      const re=w[k]+c*w[k+2]+s*w[k+3],im=w[k+1]+c*w[k+3]-s*w[k+2];
+      const j=data.mode==='free'?[v[k],v[k+1]]:[rate*(-s*v[k]+c*v[k+2]),rate*(-s*v[k+1]+c*v[k+3])];
+      const re=data.mode==='free'?w[k]:w[k]+c*w[k+2]+s*w[k+3],im=data.mode==='free'?w[k+1]:w[k+1]+c*w[k+3]-s*w[k+2];
       currentError=Math.max(currentError,Math.abs(j[0]-at.current[0]),Math.abs(j[1]-at.current[1]));
       densityError=Math.max(densityError,Math.abs(re*re+im*im-at.rho));
     }
@@ -71,9 +71,9 @@ async function run() {
   for(let target=0;target<16;target++) {
     api.setTarget(target);api.runFull();
     await advance(2.4);
-    for(let round=1;round<=3;round++) {await advance(8);distribution(`Target ${target}, iteration ${round}`);}
+    for(let round=1;round<=3;round++) {await advance(22.4);distribution(`Target ${target}, iteration ${round}`);}
   }
-  api.setParticleCount(16000);api.setTarget(15);api.runFull();await advance(26.4);
+  api.setParticleCount(16000);api.setTarget(15);api.runFull();await advance(69.6);
   distribution('Maximum particle count, complete target 15',true);
   api.setParticleCount(4000);
   api.reset();api.startNext();await advance(.6);const visible=api.readParticles();

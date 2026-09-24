@@ -14,7 +14,7 @@ const difference = (a, b) => Math.max(...Array.from(a, (v, i) => Math.abs(v - b[
 const input = () => { const state = new Float64Array(32); state[0] = 1; return state; };
 const expectedP = rounds => Math.sin((2 * rounds + 1) * Math.asin(.25)) ** 2;
 const plan = [{ kind: 'prepare', duration: 2.4 }, ...Array.from({ length: 3 }, () => [
-  { kind: 'oracle', duration: 1.6 }, { kind: 'inverse', duration: 2.4 },
+  { kind: 'oracle', duration: 1.6 }, { kind: 'inverse', duration: 16.8 },
   { kind: 'reference', duration: 1.6 }, { kind: 'forward', duration: 2.4 },
 ]).flat()];
 
@@ -46,8 +46,12 @@ async function run() {
       fieldError = Math.max(fieldError, Math.abs(psi[0] - pixels[offset]), Math.abs(psi[1] - pixels[offset + 1]));
     }
     const modalError = difference(actual.amplitudes, expected);
-    const m = [expected[2 * target], expected[2 * target + 1]], u = [0, 0];
-    for (let q = 0; q < 16; q++) if (q !== target) { u[0] += expected[2 * q] / Math.sqrt(15); u[1] += expected[2 * q + 1] / Math.sqrt(15); }
+    const s=referenceStep(input(),'prepare',1,target),m=[0,0],u=[0,0];
+    for(let q=0;q<16;q++) {
+      const r=4*(s[2*q]*expected[2*q]+s[2*q+1]*expected[2*q+1]);
+      const i=4*(s[2*q]*expected[2*q+1]-s[2*q+1]*expected[2*q]);
+      if(q===target){m[0]=r;m[1]=i;}else{u[0]+=r/Math.sqrt(15);u[1]+=i/Math.sqrt(15);}
+    }
     const marked = m[0] ** 2 + m[1] ** 2, weight = marked + u[0] ** 2 + u[1] ** 2;
     let sphereError = Math.abs(weight - Number(root.dataset.subspaceProbability));
     if (weight > 1e-12) {

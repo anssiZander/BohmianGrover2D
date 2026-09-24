@@ -1,4 +1,67 @@
-# Verification — MultiRegion 4×4
+# Verification — MultiRegionFreeMixing 4×4
+
+## Free-box mixers and forward-wait inverse — 2026-09-24
+
+Branch `MultiRegionFreeMixing` starts at `MultiRegion` commit `931c840`.
+Preparation and forward mixing apply the exact continuum kinetic phases for
+T = 2.4 gate-time seconds. The inverse applies the same positive Hamiltonian
+for 7T = 16.8 seconds. Since U(8T) = I, that endpoint is exactly A-dagger.
+The inverse path is checked at interior times as well; it is not negative-time
+evolution. Both axes evolve simultaneously throughout each mixing interval.
+
+The phase-aligned Bloch projection uses s = A|0000> including its complex
+phases. The state lies in the correct Grover plane at preparation and each
+completed iteration. Mixers use the ordinary free-box Bohmian current;
+oracle/reference pulses retain the parent's conserved curl-free transport.
+Colors, particle rendering, trail rendering/length control, and layout remain.
+
+`node --test tests/multiregion.test.mjs tests/flow.test.mjs` passes **15/15**.
+This includes all 16 targets, continuum energy-population conservation, the
+8T revival, A followed by the forward 7T inverse, positive-time interior paths,
+the Schrodinger equation, wall flux, and independently differentiated current.
+
+- 1,872 gate states versus an independent dense kinetic matrix exponential:
+  maximum amplitude error `1.115e-13`, norm error `4.441e-15`.
+- Density-source derivative error `2.710e-8`.
+- Continuity residual from finite-difference divergence `2.665e-8`.
+- Region-boundary flux versus probability derivative error `1.119e-9`.
+
+`tests/browser-check.html` passes **157/157** checks on the NVIDIA GeForce
+RTX 4070 Ti SUPER (ANGLE / D3D11), including 81 actual GPU wave readbacks,
+all 16 complete searches, all gate interiors, pause, circuit and sphere state:
+
+- Maximum GPU wave component error `3.045e-6`, norm error `5.150e-7`.
+- Maximum logical amplitude error `4.548e-13`.
+- Maximum Bloch/readout error `4.802e-13`.
+- Exactly three amplification checkpoints, ending at 96.13189697% for every goal.
+
+`tests/flow-browser-check.html` passes **224/224**, using 4,000 particles at
+interior/end samples of all 13 gates, complete searches for all 16 targets,
+and a complete 16,000-particle search. The free-current probe executes the same
+analytic GPU sine/gradient routine as the particle integrator and arrows.
+
+- Maximum GPU current component error `1.977e-5`.
+- Maximum sampled GPU flow density error `8.911e-5`.
+- Maximum particle-region sampling difference **2.454 percentage points**.
+- Maximum 8x8 histogram total-variation difference **6.041%**.
+- Failed integration steps **0**; invalid/out-of-box particles **0**.
+- Maximum particle clock lag `5.552e-16`; WebGL error code `0`.
+- No warnings or errors on the fresh flow test page.
+
+`tests/trail-browser-check.html` passes **11/11** with the new trajectories.
+Changing trail length leaves particle/wave buffers identical; pause/reset,
+tiny-step fading, GPU decay rebaking, and recording exposure checks pass.
+Fresh wave and trail test pages report no browser warnings/errors or WebGL errors.
+
+Static verification passes for 58 DOM references and 16 runtime shader/include
+sources. Visual inspection covered phase transport and a paused second-round
+forward-wait inverse, with the matching Bohmian-current readout, colored arrows,
+golden trails, circuit highlight, and curved Bloch trajectory.
+
+## Historical results from the parent MultiRegion branch
+
+The sections below describe the previous Hadamard-mixer implementation at
+`931c840`; their physics and timing are not the free-mixing branch's results.
 
 ## DoubleSlit-style trails and length control — 2026-09-24
 

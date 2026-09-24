@@ -1,8 +1,8 @@
-import { STATE_COUNT, hadamard, sineCoefficients, PACKET_TRANSFORM } from './multiregion-core.js';
+import { STATE_COUNT, FREE_OMEGA, sineCoefficients, PACKET_TRANSFORM } from './multiregion-core.js';
 
-// Products of our four sine modes contain only cosine frequencies 0..8.
-// Solve the Neumann Poisson equation spectrally, with zero constant potential.
-// This selects the curl-free current; the wave evolution is not modified.
+// Free intervals use the ordinary Schrodinger current. For ideal phase pulses,
+// products of four sine modes contain only cosine frequencies 0..8: solve the
+// Neumann Poisson equation spectrally to select their curl-free transport.
 export const FLOW_MODES = 9;
 
 function crossDensity(a, b) {
@@ -22,18 +22,15 @@ function crossDensity(a, b) {
 }
 
 export function gateFlow(start, kind, target, duration) {
+  if (kind === 'prepare' || kind === 'forward' || kind === 'inverse') {
+    return { mode: 'free', coefficients: sineCoefficients(start), span: FREE_OMEGA*duration, duration, direction: 1 };
+  }
   const fixed = Float64Array.from(start), rotating = new Float64Array(2*STATE_COUNT);
   if (kind === 'oracle' || kind === 'reference') {
     const q = kind === 'oracle' ? target : 0;
     rotating[2*q] = fixed[2*q]; rotating[2*q+1] = fixed[2*q+1];
     fixed[2*q] = 0; fixed[2*q+1] = 0;
-  } else {
-    const transformed = hadamard(start);
-    for (let k = 0; k < fixed.length; k++) {
-      fixed[k] = .5*(start[k]+transformed[k]);
-      rotating[k] = .5*(start[k]-transformed[k]);
-    }
-  }
+  } else throw new Error(`Unknown phase gate: ${kind}`);
   const f = sineCoefficients(fixed), g = sineCoefficients(rotating);
   const cross = crossDensity(f,g), dc = cross.re.map(v => 2*v), ds = cross.im.map(v => 2*v);
   // fixed and rotating are orthogonal projector components. Their exact cross
@@ -44,10 +41,11 @@ export function gateFlow(start, kind, target, duration) {
     const k = 9*n+m, lambda = Math.PI**2*(n*n+m*m);
     if (lambda) { potential[2*k] = dc[k]/lambda; potential[2*k+1] = ds[k]/lambda; }
   }
-  return { f, g, dc, ds, potential, direction: kind === 'inverse' ? -1 : 1, duration };
+  return { mode: 'phase', f, g, dc, ds, potential, direction: 1, duration };
 }
 
 export function flowAt(flow, x, y, progress) {
+  if (flow.mode === 'free') return freeFlowAt(flow, x, y, progress);
   const cx = [], cy = [], sx = [], sy = [];
   for (let n = 0; n < 9; n++) {
     cx.push(Math.cos(n*Math.PI*x)); cy.push(Math.cos(n*Math.PI*y));
@@ -71,6 +69,22 @@ export function flowAt(flow, x, y, progress) {
     divergence -= source*cx[n]*cy[m];
   }
   return { rho: re*re+im*im, drho, current: [jx,jy], divergence };
+}
+
+function freeFlowAt(flow, x, y, progress) {
+  let re=0,im=0,dxr=0,dxi=0,dyr=0,dyi=0,dtr=0,dti=0;
+  for (let n=1;n<=4;n++) for (let m=1;m<=4;m++) {
+    const q=2*(4*(n-1)+m-1), energy=n*n+m*m, angle=flow.span*progress*energy;
+    const c=Math.cos(angle),s=Math.sin(angle),a=flow.coefficients;
+    const r=c*a[q]+s*a[q+1],i=c*a[q+1]-s*a[q];
+    const sx=Math.sin(n*Math.PI*x),sy=Math.sin(m*Math.PI*y);
+    const w=2*sx*sy,wx=2*n*Math.PI*Math.cos(n*Math.PI*x)*sy,wy=2*m*Math.PI*sx*Math.cos(m*Math.PI*y);
+    re+=w*r;im+=w*i;dxr+=wx*r;dxi+=wx*i;dyr+=wy*r;dyi+=wy*i;
+    dtr+=FREE_OMEGA*energy*w*i;dti-=FREE_OMEGA*energy*w*r;
+  }
+  const factor=2*FREE_OMEGA/Math.PI**2,drho=2*(re*dtr+im*dti);
+  return {psi:[re,im],rho:re*re+im*im,drho,divergence:-drho,
+    current:[factor*(re*dxi-im*dxr),factor*(re*dyi-im*dyr)]};
 }
 
 // Inverse CDF of the initial 1D packet. Stratification and a deterministic
