@@ -81,7 +81,7 @@ trails; the particle-box readout tracked the spatial probability.
 The `MultiRegion` branch starts from `Inverse-Mixing` at `1571b5b` and replaces
 the four-state solver with 16 orthonormal spatial packets. Preparation and mixing
 use the explicitly specified ideal mode Hamiltonian
-`H_A = pi*hbar*(I-A)/(2T)`, where `A = H_Had^(tensor 4)`. The inverse reverses its
+`H_mix = pi*hbar*(I-H)/(2T)`, where `H = H_Had^(tensor 4)`. The inverse reverses its
 sign. Oracle and reference pulses use mode-projector exponentials. The full
 complex amplitudes are evaluated at the current gate time; no endpoint images
 or probabilities are interpolated. See `README.md` for the model and its physical

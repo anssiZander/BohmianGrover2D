@@ -81,17 +81,17 @@ probabilities do not imply perfectly flat spatial density.
 
 ## Exact gate dynamics
 
-Let `A = H_Had^(tensor 4)` in the logical packet basis. This is Hermitian and
-unitary: `A^dagger = A` and `A^2 = I`. Preparation and forward mixing use
+Let `H = H_Had^(tensor 4)` in the logical packet basis. This is Hermitian and
+unitary: `H^dagger = H` and `H^2 = I`. Preparation and forward mixing use
 
 ```text
-H_A = pi hbar (I - A) / (2T)
-U(p) = exp(-i H_A pT / hbar)
-     = (I+A)/2 + exp(-i pi p) (I-A)/2.
+H_mix = pi hbar (I - H) / (2T)
+U(p) = exp(-i H_mix pT / hbar)
+     = (I+H)/2 + exp(-i pi p) (I-H)/2.
 ```
 
 Here `p` is elapsed gate time divided by its duration. The two terms are the
-orthogonal positive/negative eigenspace projections of `A`. The implementation
+orthogonal positive/negative eigenspace projections of `H`. The implementation
 evaluates this exact exponential from the gate's initial complex amplitudes on
 every frame. It does not blend endpoint images, interpolate probabilities, or
 renormalize an interpolated vector. Inverse mixing uses `U(-p)`: the same endpoint
@@ -104,8 +104,8 @@ U_q(p) = I + (exp(-i pi p) - 1) |q><q|.
 ```
 
 The oracle uses `q = target`; the reference uses `q = 0`. Preparation runs once,
-then each iteration runs `oracle -> A^dagger -> reference -> A`. The implemented
-diffuser `A (I-2|0><0|) A^dagger` differs from the conventional `2|s><s|-I` only
+then each iteration runs `oracle -> H^dagger -> reference -> H`. The implemented
+diffuser `H (I-2|0><0|) H^dagger` differs from the conventional `2|s><s|-I` only
 by a global minus sign. The full spatial phase is displayed, including this sign.
 
 For one marked state among 16, the logical target probability after `k` iterations

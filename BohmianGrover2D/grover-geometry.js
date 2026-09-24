@@ -1,7 +1,7 @@
 import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
-const gateNames = { input: 'Input |0000⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
+const gateNames = { input: 'Input |0000⟩', prepare: 'Prepare H', oracle: 'Oracle Oω', inverse: 'Inverse H†', reference: 'Reference S₀', forward: 'Forward H' };
 const descriptions = {
   input: 'Start in the lower-left logical packet |0000⟩. Preparation will spread its amplitude over all 16 modes.',
   prepare: 'The exact unitary mixer creates equal amplitudes in all 16 modes. The cyan point marks the prepared state |s⟩.',

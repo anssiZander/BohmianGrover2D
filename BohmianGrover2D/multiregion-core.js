@@ -5,12 +5,12 @@ export const STATE_COUNT = SIDE * SIDE;
 export const ITERATIONS = 3;
 export const LABELS = Array.from({ length: STATE_COUNT }, (_, q) => q.toString(2).padStart(4, '0'));
 export const GATES = Object.freeze([
-  { kind: 'prepare', name: 'Prepare balanced state', symbol: 'A', iteration: 0, duration: 2.4 },
+  { kind: 'prepare', name: 'Prepare balanced state', symbol: 'H', iteration: 0, duration: 2.4 },
   ...Array.from({ length: ITERATIONS }, (_, i) => [
     { kind: 'oracle', name: 'Oracle phase', symbol: 'Oω', iteration: i + 1, duration: 1.6 },
-    { kind: 'inverse', name: 'Inverse mixer', symbol: 'A†', iteration: i + 1, duration: 2.4 },
+    { kind: 'inverse', name: 'Inverse mixer', symbol: 'H†', iteration: i + 1, duration: 2.4 },
     { kind: 'reference', name: 'Reference phase', symbol: 'S₀', iteration: i + 1, duration: 1.6 },
-    { kind: 'forward', name: 'Forward mixer', symbol: 'A', iteration: i + 1, duration: 2.4 },
+    { kind: 'forward', name: 'Forward mixer', symbol: 'H', iteration: i + 1, duration: 2.4 },
   ]).flat(),
 ].map(Object.freeze));
 
@@ -29,7 +29,7 @@ export function basisState(q = 0) {
   return state;
 }
 
-// A = H_Had^(tensor 4), in the logical packet basis |x1 x0 y1 y0>.
+// H = H_Had^(tensor 4), in the logical packet basis |x1 x0 y1 y0>.
 export function hadamard(state) {
   const out = Float64Array.from(state);
   for (let stride = 1; stride < STATE_COUNT; stride *= 2) {
@@ -44,8 +44,8 @@ export function hadamard(state) {
   return out.map(value => value / Math.sqrt(STATE_COUNT));
 }
 
-// H_A = pi*hbar/(2*T) (I-A). Since A^2=I, the exact propagator is
-// U(p) = (I+A)/2 + exp(-i*pi*p) (I-A)/2. p is signed gate time / T.
+// H_mix = pi*hbar/(2*T) (I-H). Since H^2=I, the exact propagator is
+// U(p) = (I+H)/2 + exp(-i*pi*p) (I-H)/2. p is signed gate time / T.
 // The two terms are orthogonal eigenspace projections, not an image blend.
 export function evolveMixer(state, p) {
   const transformed = hadamard(state), out = new Float64Array(state.length);
