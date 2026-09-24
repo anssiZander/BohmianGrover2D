@@ -1,4 +1,69 @@
-# Verification — parallel inverse mixing
+# Verification — MultiRegion 4×4
+
+## Exact continuous wave — 2026-09-24
+
+The `MultiRegion` branch starts from `Inverse-Mixing` at `1571b5b` and replaces
+the four-state solver with 16 orthonormal spatial packets. Preparation and mixing
+use the explicitly specified ideal mode Hamiltonian
+`H_A = pi*hbar*(I-A)/(2T)`, where `A = H_Had^(tensor 4)`. The inverse reverses its
+sign. Oracle and reference pulses use mode-projector exponentials. The full
+complex amplitudes are evaluated at the current gate time; no endpoint images
+or probabilities are interpolated. See `README.md` for the model and its physical
+limitations.
+
+`node --test tests/multiregion.test.mjs` passes **9/9 tests**. They cover packet
+orthogonality, spatial localization and hard walls, preparation and inverse,
+all continuous gates, the Schrodinger derivative including its sign, phase-pulse
+probability conservation, analytic spatial integrals, the checkpoint clock,
+target locking, pause/reset, and Bloch projection. **1,872 intermediate states**
+across all 16 targets agree with an independent dense matrix exponential:
+
+- Maximum complex-amplitude component error: `2.776e-15`.
+- Maximum logical norm error: `1.332e-15`.
+- Marked probabilities after three iterations: `47.265625%`, `90.8447265625%`,
+  and `96.13189697265625%`, for every target.
+
+`node tests/static-check.mjs` passes, covering 43 DOM references, the sphere's
+required nodes, unique HTML IDs, three runtime shader files, local assets, and
+the existing recording bridge.
+
+## Actual browser and GPU
+
+The reproducible fixture at `tests/browser-check.html` passes **157/157 checks**
+in Chromium with WebGL2 on an NVIDIA GeForce RTX 4070 Ti SUPER (ANGLE / D3D11).
+It loads the production app and performs **81 GPU wave readbacks** from the
+512×512 RGBA32F texture. Every gate is checked at 0%, 25%, 50%, 75%, and 100% for
+an interior target; all 16 targets also run through the complete queued search.
+Each readback compares sampled real and imaginary field values to an independent
+spatial reconstruction and integrates the entire GPU wave's norm.
+
+- Maximum GPU complex-field component error: `3.33423e-6`.
+- Maximum integrated GPU norm error: `4.69074e-7`.
+- Maximum logical-amplitude error: `2.221e-15`.
+- Maximum displayed Bloch-coordinate/subspace-weight error: `4.885e-15`.
+- WebGL error code: `0`; no browser warnings or errors in the completed fixture.
+
+The fixture also checks single-view mode, spatial ordering of the target grid,
+the circuit's active gate, target locks, every manual checkpoint, pause during
+every gate, the recording clock, reset, and the three iteration probabilities.
+
+Visual inspection of the normal page confirmed the phase palette, cyan 4×4
+grid, crimson goal outline, complex intermediate preparation state, and the
+synchronized circuit and sphere. Pause and Reset remain accessible below the
+scrolling controls. Keyboard orbit changed only the sphere camera; the paused
+state vector stayed identical. Phase/grid toggles and target selection work.
+The normal animation completed all three iterations with badges at 47.3%,
+90.8%, and 96.1%, the sphere in the Grover subspace, and total probability
+`1.000000`. The normal page also had no console warnings or errors. Both panel
+collapse controls worked, and the full target grid and wave remained readable
+at the default 1280×720 viewport.
+
+---
+
+# Historical verification — four-state inverse-mixing branch
+
+The records below describe the earlier four-state implementation, not the
+16-state model above.
 
 ## Effective Bloch sphere — 2026-09-24
 

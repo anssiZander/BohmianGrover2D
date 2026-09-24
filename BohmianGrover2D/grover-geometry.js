@@ -1,88 +1,15 @@
-// Exact four-mode gate geometry, in a fixed rephased logical basis.
-// If a_q is the numerical wave's logical amplitude, the displayed amplitude is
-// b_q = i^(-popcount(q)) exp(i (E1+E2) t_signed / hbar + i phi_reference) a_q.
-// This removes the common box-energy phase and makes A|00> = (1,1,1,1)/2.
-// The reference-pulse overall phase chooses the usual reflection-about-s sign.
-// No such phase changes are applied to the spatial wave or its renderer.
+import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
-const norm2 = z => z[0] * z[0] + z[1] * z[1];
-
-// Effective basis: |0> = marked, |1> = the equal unmarked superposition.
-// Project first, then normalize. This is not a reduced single-qubit state.
-export function effectiveBlochState(marked, unmarked) {
-  const markedWeight = norm2(marked), unmarkedWeight = norm2(unmarked);
-  const weight = markedWeight + unmarkedWeight;
-  if (weight < 1e-12) return { vector: null, weight, conditionalMarked: null };
-  const [mr, mi] = marked, [ur, ui] = unmarked;
-  return {
-    vector: [2 * (mr * ur + mi * ui) / weight,
-      2 * (mr * ui - mi * ur) / weight, (markedWeight - unmarkedWeight) / weight],
-    weight: clamp01(weight),
-    conditionalMarked: clamp01(markedWeight / weight),
-  };
-}
-
-function mix(state, angle) {
-  const c = Math.cos(angle), s = Math.sin(angle);
-  for (const bit of [1, 2]) {
-    for (let q = 0; q < 4; q++) {
-      if (q & bit) continue;
-      const a = state[q], b = state[q | bit];
-      state[q] = [c * a[0] - s * b[0], c * a[1] - s * b[1]];
-      state[q | bit] = [s * a[0] + c * b[0], s * a[1] + c * b[1]];
-    }
-  }
-}
-
-function phase(state, q, angle) {
-  const [re, im] = state[q], c = Math.cos(angle), s = Math.sin(angle);
-  state[q] = [c * re - s * im, s * re + c * im];
-}
-
-// Gate numbers match the circuit. Progress is the actual operation fraction,
-// never wall-clock time or a tween between endpoint arrows.
-export function groverGeometryState(target, gate = 0, progress = 1) {
-  const state = [[1, 0], [0, 0], [0, 0], [0, 0]];
-  gate = Math.max(0, Math.min(5, Math.floor(gate)));
-  progress = clamp01(progress);
-  for (let step = 1; step <= gate; step++) {
-    const p = step === gate ? progress : 1;
-    if (step === 1 || step === 5) mix(state, Math.PI * p / 4);
-    else if (step === 2) phase(state, target, -Math.PI * p);
-    else if (step === 3) mix(state, -Math.PI * p / 4);
-    else if (step === 4) {
-      // exp(+i phi) S_00(phi): same ray as the physical reference pulse.
-      for (let q = 1; q < 4; q++) phase(state, q, Math.PI * p);
-    }
-  }
-  const unmarked = [0, 0];
-  for (let q = 0; q < 4; q++) if (q !== target) {
-    unmarked[0] += state[q][0] / Math.sqrt(3);
-    unmarked[1] += state[q][1] / Math.sqrt(3);
-  }
-  const marked = state[target];
-  const targetProbability = norm2(marked);
-  const planeProbability = norm2(unmarked) + targetProbability;
-  return {
-    amplitudes: state,
-    bloch: effectiveBlochState(marked, unmarked),
-    real: [unmarked[0], marked[0]],
-    imaginary: [unmarked[1], marked[1]],
-    targetProbability: clamp01(targetProbability),
-    outsideProbability: clamp01(1 - planeProbability),
-  };
-}
-
-const gateNames = ['Input |00⟩', 'Prepare A', 'Oracle Oω', 'Inverse A†', 'Reference S₀₀', 'Forward A'];
-const descriptions = [
-  'Start in |00⟩. Preparation will create the balanced search state |s⟩.',
-  'A spreads the input into four equal amplitudes. The cyan point marks the prepared state |s⟩.',
-  'The oracle rotates the relative phase by π around the vertical axis. Marked probability stays at 25%.',
-  'A† reverses the box mixing. The unit vector shows the normalized projection; its subspace weight can change.',
-  'S₀₀ phase-flips the |00⟩ amplitude. This is the central reflection of the three-part diffuser.',
-  'A completes the diffuser. Interference cancels the unmarked amplitudes and builds the marked answer.',
-];
+const gateNames = { input: 'Input |0000⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
+const descriptions = {
+  input: 'Start in the lower-left logical packet |0000⟩. Preparation will spread its amplitude over all 16 modes.',
+  prepare: 'The exact unitary mixer creates equal amplitudes in all 16 modes. The cyan point marks the prepared state |s⟩.',
+  oracle: 'The oracle turns the marked amplitude through π. All logical probabilities stay fixed during this phase gate.',
+  inverse: 'The inverse unitary follows the opposite Hamiltonian sign. The normalized projection stays on the sphere; its weight can change.',
+  reference: 'A π phase pulse on |0000⟩ is the central operation of the diffuser.',
+  forward: 'The forward mixer completes this Grover iteration. Interference increases the marked amplitude.',
+};
 
 export function createGroverGeometry(root) {
   const get = name => root.querySelector(`[data-geometry="${name}"]`);
@@ -98,7 +25,7 @@ export function createGroverGeometry(root) {
   const defaultView = { yaw: .65, pitch: .26 };
   let yaw = defaultView.yaw, pitch = defaultView.pitch;
   let lastKey = '', curveKey = '', gridKey = '', samples = [], frame = null, drag = null;
-  const labels = ['00', '01', '10', '11'];
+
   const percent = value => `${(100 * value).toFixed(1)}%`;
   const dot = (a, b) => a.reduce((sum, value, i) => sum + value * b[i], 0);
   let right, up, eye;
@@ -170,19 +97,19 @@ export function createGroverGeometry(root) {
       label(nodes.xLabel, [1.22, 0, 0], 0, 4); label(nodes.yLabel, [0, 1.22, 0], 0, 4);
       label(nodes.northLabel, [0, 0, 1.22], 0, -5); label(nodes.southLabel, [0, 0, -1.22], 0, 11);
       positionDot(nodes.northDot, [0, 0, 1], 2.6); positionDot(nodes.southDot, [0, 0, -1], 2.6);
-      const prepared = [Math.sqrt(3) / 2, 0, -.5];
+      const prepared = [2 * Math.sqrt(STATE_COUNT - 1) / STATE_COUNT, 0, 2 / STATE_COUNT - 1];
       positionDot(nodes.preparedDot, prepared, 5.5); label(nodes.preparedLabel, prepared, 12, 3);
     }
 
-    const { target, gate, progress, state } = frame;
-    const nextCurveKey = `${target}/${gate}`;
+    const { target, kind, progress, state, startAmplitudes, stepKey } = frame;
+    const nextCurveKey = stepKey;
     if (nextCurveKey !== curveKey) {
       curveKey = nextCurveKey;
-      samples = Array.from({ length: 129 }, (_, i) => groverGeometryState(target, gate, i / 128).bloch.vector);
+      samples = Array.from({ length: 129 }, (_, i) => projectGroverState(kind === 'input' ? startAmplitudes : evolveGate(startAmplitudes, kind, i / 128, target), target).bloch.vector);
     }
     const prefix = samples.slice(0, Math.floor(progress * 128) + 1);
     prefix.push(state.bloch.vector);
-    const trace = gate ? hemispherePaths(prefix) : { front: '', back: '' };
+    const trace = kind !== 'input' ? hemispherePaths(prefix) : { front: '', back: '' };
     nodes.frontTrace.setAttribute('d', trace.front); nodes.backTrace.setAttribute('d', trace.back);
     positionDot(nodes.gateStart, samples[0], 4.2);
     const vector = state.bloch.vector;
@@ -221,21 +148,20 @@ export function createGroverGeometry(root) {
   nodes.resetView.addEventListener('click', () => orbit(defaultView.yaw, defaultView.pitch));
 
   return {
-    update({ target, gate, progress = 1, running = false, paused = false, parallel = false }) {
-      root.hidden = parallel;
-      if (parallel) { lastKey = ''; drag = null; return; }
+    update({ target, kind = 'input', progress = 0, running = false, paused = false,
+      iteration = 0, complete = false, amplitudes, startAmplitudes = amplitudes, stepKey = 'input' }) {
       progress = clamp01(progress);
-      const key = `${target}/${gate}/${progress}/${running}/${paused}`;
+      const key = `${stepKey}/${progress}/${running}/${paused}`;
       if (key === lastKey) return;
       lastKey = key;
-      const state = groverGeometryState(target, gate, progress);
-      frame = { target, gate, progress, state };
+      const state = projectGroverState(amplitudes, target);
+      frame = { target, kind, progress, state, startAmplitudes, stepKey };
       draw();
-      const finished = gate === 5 && !running;
-      nodes.target.textContent = `Target |${labels[target]}⟩`;
-      nodes.status.textContent = finished ? 'Answer reached' : `${gateNames[gate]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : gate ? ' · held' : ''}`;
+      nodes.target.textContent = `Target |${LABELS[target]}⟩`;
+      const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
+      nodes.status.textContent = complete ? 'Search complete' : `${round}${gateNames[kind]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : kind !== 'input' ? ' · held' : ''}`;
       nodes.description.textContent = !state.bloch.vector ? 'The projection has zero weight, so its direction is undefined.'
-        : finished ? 'The state has reached the marked north pole. All probability is in the Grover subspace and in the marked answer.' : descriptions[gate];
+        : complete ? 'Three Grover iterations reach 96.1% marked probability. The vector stops near the marked pole; standard π pulses do not reach exactly 100% for 16 states.' : descriptions[kind];
       nodes.markedValue.textContent = percent(state.targetProbability);
       nodes.weightValue.textContent = percent(state.bloch.weight);
       nodes.outsideValue.textContent = percent(state.outsideProbability);
@@ -243,8 +169,9 @@ export function createGroverGeometry(root) {
       nodes.normValue.textContent = state.bloch.vector ? '|r| = 1' : 'r undefined';
       nodes.markedBar.style.width = percent(state.targetProbability);
       nodes.weightBar.style.width = percent(state.bloch.weight);
-      nodes.liveDescription.textContent = `${gateNames[gate]}. The gold unit vector represents the normalized marked/unmarked projection. Subspace weight ${percent(state.bloch.weight)}; actual marked probability ${percent(state.targetProbability)}. Drag or use arrow keys to rotate the view.`;
-      root.dataset.gate = String(gate);
+      nodes.liveDescription.textContent = `${gateNames[kind]}. The gold unit vector represents the normalized marked/unmarked projection. Subspace weight ${percent(state.bloch.weight)}; actual marked probability ${percent(state.targetProbability)}. Drag or use arrow keys to rotate the view.`;
+      root.dataset.kind = kind;
+      root.dataset.iteration = String(iteration);
       root.dataset.progress = String(progress);
       root.dataset.target = String(target);
       root.dataset.blochVector = JSON.stringify(state.bloch.vector);

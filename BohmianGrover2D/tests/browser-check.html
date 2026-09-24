@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"/><title>MultiRegion GPU verification</title><link rel="icon" href="data:,"/>
+<body style="background:#061124;color:#d4e6ff;font:13px monospace">Loading the production page…
+<script type="module">
+// Load the unmodified production markup into this test page. Its relative
+// resources resolve to the app root, and the verifier shares its JS realm.
+const response = await fetch('../index.html');
+const source = await response.text();
+const html = source.replace('<head>', '<head><base href="../"/>').replace('</body>', '<script type="module" src="./tests/browser-check.js"><' + '/script></body>');
+document.open(); document.write(html); document.close();
+</script></body></html>

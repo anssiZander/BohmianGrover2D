@@ -121,7 +121,7 @@
 
   function recordingFileName(startedAt = state.startedAt) {
     const stamp = new Date(startedAt || Date.now()).toISOString().replace(/[:.]/g, "-");
-    return `bohmian-grover-2d-${stamp}.webm`;
+    return `grover-multiregion-4x4-${stamp}.webm`;
   }
 
   function syncRecordingButton() {
