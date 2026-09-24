@@ -1,5 +1,55 @@
 # Verification — MultiRegion 4×4
 
+## Conserved current, particles, and trails — 2026-09-24
+
+Added the curl-free Neumann current `j = grad chi`, `laplacian chi = -d rho/dt`
+without changing the wave's 16-mode Hamiltonian or amplitudes. The source and
+potential use the exact finite cosine expansion of products of the sine modes.
+Arrows display current; the yellow particles follow `v = j/rho`. Their initial
+positions sample the actual spatial input density. There are no respawns,
+velocity caps, target attraction, or repeated Born resampling.
+
+`node --test tests/multiregion.test.mjs tests/flow.test.mjs` passes **15/15 tests**.
+The six new flow tests cover every gate and target, genuinely complex inputs,
+inverse sign, curl, wall flux, current through region boundaries, and initial
+particle sampling. Measured comparisons with independent wave evolution:
+
+- Density-source derivative error: `2.370e-9`.
+- Continuity residual using an independent finite-difference divergence:
+  `4.597e-8`.
+- Net current into a region versus its probability derivative: `8.679e-11`.
+
+The reproducible `tests/flow-browser-check.html` fixture passed **224/224
+browser/GPU checks** on the NVIDIA GeForce RTX 4070 Ti SUPER (ANGLE / D3D11).
+It checks actual float-texture readbacks at four interior/end times of all 13
+gates for target 6, 4,000-particle region counts and 8×8 spatial histograms,
+pause during every gate, all 16 complete target searches, and a complete search
+with the maximum 16,000 particles. It also checks hidden-particle evolution and
+the recording clock.
+
+- Maximum GPU current component error: `3.853e-7`.
+- Maximum GPU flow-basis density error: `1.363e-5`.
+- Maximum 4×4 region sampling difference: **1.496 percentage points**.
+- Maximum 8×8 histogram total-variation difference: **5.422%** (finite ensemble).
+- Failed integration steps: **0**; invalid/out-of-box particles: **0**.
+- Maximum particle clock lag at checkpoints: `5.552e-16`.
+- WebGL error code: `0`; no browser warnings or errors.
+
+The initial direct `j/rho` integrator had difficulty near nodes. The final GPU
+integrator instead uses `dx/ds = T*j`, `dp/ds = rho`, with adaptive embedded
+Runge–Kutta and cubic dense output to hit the requested gate time. Its auxiliary
+time step is limited by actual spatial motion, temporal accuracy, and local
+error, not an arbitrary cap on the auxiliary parameter. This preserves the
+same trajectories while avoiding division by small density.
+
+The inherited `tests/browser-check.html` fixture also passed **157/157 checks**
+after adding the overlays (81 GPU wave readbacks), with exactly the same maximum
+wave and norm errors recorded below. Static checks cover 56 DOM references and
+14 runtime shader/include sources. The existing particle and arrow fragment
+shaders are reused for their visual styling. Visual inspection covered live
+preparation and a paused reference gate with synchronized current, dots, and
+trails; the particle-box readout tracked the spatial probability.
+
 ## Exact continuous wave — 2026-09-24
 
 The `MultiRegion` branch starts from `Inverse-Mixing` at `1571b5b` and replaces

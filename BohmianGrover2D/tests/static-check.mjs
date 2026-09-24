@@ -8,10 +8,11 @@ const required = [...domText.matchAll(/'([^']+)'/g)].map(match => match[1]);
 for (const id of required) if (!ids.includes(id)) throw new Error(`Missing DOM node #${id}`);
 const nodeText = geometry.slice(geometry.indexOf('Object.fromEntries(['), geometry.indexOf('].map(name =>'));
 for (const [, name] of nodeText.matchAll(/'([^']+)'/g)) if (!html.includes(`data-geometry="${name}"`)) throw new Error(`Missing sphere node ${name}`);
-const shaders = [...main.matchAll(/loadShader\('([^']+)'\)/g)].map(match => match[1]);
+const flow = await read('flow-renderer.js');
+const shaders = [...new Set([...(main + flow).matchAll(/loadShader\('([^']+)'\)/g)].map(match => match[1]))];
 for (const shader of shaders) {
   const source = await read(`shaders/${shader}`);
-  if (!source.startsWith('#version 300 es')) throw new Error(`${shader}: missing GLSL version`);
+  if (!shader.endsWith('.glsl') && !source.startsWith('#version 300 es')) throw new Error(`${shader}: missing GLSL version`);
   if ([...source].filter(c => c === '{').length !== [...source].filter(c => c === '}').length) throw new Error(`${shader}: unbalanced braces`);
 }
 for (const [, path] of html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)) await read(path);

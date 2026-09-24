@@ -3,8 +3,8 @@
 A single continuous 2D wave encodes 16 logical outcomes in a 4×4 arrangement.
 This branch uses exact continuous unitary mode gates, displayed with the original
 rainbow phase palette, dark blue panels, cyan grid, and crimson target outline.
-There are no Bohmian particles, particle trails, guidance arrows, or parallel
-search views in this version.
+Conserved-current arrows and guided yellow particles with trails show the
+spatial probability transport. The display remains a single search view.
 
 ## Run
 
@@ -33,6 +33,13 @@ render targets is required. No dependencies or build step are needed.
   vector describes the normalized marked/equal-unmarked projection. The weight
   bar accounts for probability outside that subspace during individual gates.
 - **Start Recording** captures the wave canvas as WebM; panels are excluded.
+- **Current arrows**, **Particles**, and **Trails**, beneath the wave, toggle
+  independently. Hidden particles continue evolving. The arrows display current
+  strength on a compressed scale; particles move at current divided by density.
+- **Flow settings** adjusts arrow density/gain, dot size, and particle count.
+  Changing the count resets the search and is locked during a running gate.
+- **Particles inside goal box** is a finite-sample estimate of the spatial
+  probability. Compare it with **Inside goal box**, not the logical percentage.
 
 The labels use `|x₁x₀y₁y₀⟩`. Columns increase left to right and rows bottom to top.
 The upper-left box is `|0011⟩`, upper-right `|1111⟩`, lower-left `|0000⟩`, and
@@ -115,6 +122,59 @@ mixers, 1.6 for phase pulses at speed 1) set the pedagogical playback time and
 corresponding effective coupling strength. No ordinary phase-gradient particle
 guidance is claimed for these spatially nonlocal operations.
 
+## Conserved probability flow
+
+The added flow leaves all gate amplitudes and the wave evolution unchanged.
+We explicitly choose the curl-free current
+
+```text
+rho = |psi|^2
+laplacian chi = -partial_t rho,   normal derivative of chi = 0 at the walls
+j = gradient chi,                v = j/rho.
+```
+
+Thus `partial_t rho + divergence j = 0`, with zero flux through the outer
+walls. In this simply connected box, the Neumann problem fixes the current
+uniquely once the curl-free rule has been selected. It is also the current
+minimizing the integral of `|j|^2` among currents with the same divergence and
+normal boundary flux. Other choices can add divergence-free circulation.
+These are generalized probability-transport trajectories, not a claim that the
+nonlocal Hamiltonian singles out ordinary phase-gradient Bohmian paths.
+
+For each gate, write `psi(p) = F + exp(-i*theta) G`, with orthogonal projector
+components `F,G`, `theta = direction*pi*p`, and `p = t/T`. Then
+
+```text
+rho = |F|^2 + |G|^2 + Dc*cos(theta) + Ds*sin(theta)
+Dc = 2 Re(conj(F)*G), Ds = 2 Im(conj(F)*G)
+partial_t rho = (direction*pi/T) [-Dc*sin(theta) + Ds*cos(theta)].
+```
+
+Products of sine modes 1..4 contain only cosine frequencies 0..8 on each axis.
+The Poisson problem therefore has a finite analytic spectral solution: divide
+each nonconstant cosine coefficient of `partial_t rho` by
+`pi^2*(n^2+m^2)` to get the corresponding coefficient of `chi`. The constant
+source coefficient is zero by unitarity. We differentiate this sum analytically
+to obtain `j`; there is no screen-image differencing or iterative Poisson solve.
+This construction follows the inverse-Laplacian current described by
+[Struyve and Valentini, equations 5–12](https://arxiv.org/pdf/0808.0290), adapted
+to the reflecting boundary of our square.
+
+The two current fields and complex `F,G` fields are reconstructed in 512×512
+float textures once per gate. Both arrows and particles sample these fields.
+Particles use adaptive embedded Runge–Kutta integration on the GPU. To avoid
+division by tiny density near nodes, we integrate the equivalent equations
+`dx/ds = T*j`, `dp/ds = rho`, and intersect the resulting path with the requested
+gate time using cubic dense output. No velocity cap, attraction toward the
+goal, particle respawning, or resampling during gates is used. Initial positions
+sample the actual input packet's density through its inverse CDF.
+
+Particle trajectories, GPU texture interpolation, and their finite ensemble
+have numerical/sampling error; they are tested against the continuous wave.
+Pause freezes the instantaneous arrows, positions, and trail history. Manual
+gate checkpoints hold everything still. The existing recording clock advances
+the wave and particles together, with all visible overlays in the capture.
+
 ## Implementation and verification
 
 - `multiregion-core.js`: pure complex-amplitude dynamics, spatial basis,
@@ -124,16 +184,23 @@ guidance is claimed for these spatially nonlocal operations.
   GPU texture from its sine coefficients. Only 16 complex amplitudes evolve on
   the CPU. `shaders/multiregion_render.frag` renders phase and density.
 - `grover-geometry.js`: the interactive sphere, driven by those same amplitudes.
+- `probability-flow.js`: exact density-source/Poisson coefficients and Born
+  sampling. `flow-renderer.js` and the `flow_*` shaders: GPU field reconstruction,
+  adaptive particle integration, current arrows, and fading trails.
 
-Legacy shaders from the original branch remain in the repository as references;
-they are not loaded by this version.
+Legacy wave solvers remain unloaded. The original particle fragment shader and
+arrow fragment shader are reused to preserve their color and edge treatment.
 
 ```powershell
 node tests/static-check.mjs
 node --test tests/multiregion.test.mjs
+node --test tests/flow.test.mjs
 ```
 
 For reproducible browser/GPU checks, open `/tests/browser-check.html` on the same
 local server. It loads the production page and compares GPU texture readbacks
 against an independent dense matrix-exponential reference. See `VERIFICATION.md`
 for measured results and visual checks.
+`/tests/flow-browser-check.html` additionally checks the GPU current, particle
+region counts and 8×8 spatial histograms, every target, pause, visibility, and
+the recording clock.

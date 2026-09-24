@@ -1,20 +1,26 @@
 import { STATE_COUNT, ITERATIONS, LABELS, GATES, SearchSimulation, probabilities,
   sineCoefficients, boxProbability } from './multiregion-core.js';
 import { createGroverGeometry } from './grover-geometry.js';
+import { FlowRenderer } from './flow-renderer.js';
 
 const GRID = 512;
 const simulation = new SearchSimulation(15);
-const params = { speed: 1, visGain: .65, visGamma: .55, showPhase: true, showGrid: true };
+const params = { speed: 1, visGain: .65, visGamma: .55, showPhase: true, showGrid: true,
+  showCurrent: true, showParticles: true, showTrails: true, particleCount: 4000,
+  particleSize: 3.5, arrowGrid: 20, currentGain: 2.5 };
 const byId = id => document.getElementById(id);
 const dom = Object.fromEntries(['c', 'waveArea', 'waveLabels', 'stage', 'waveHeader', 'waveFooter',
   'goalGrid', 'targetSummary', 'prepare', 'oracle', 'inverse', 'reference', 'forward', 'next', 'full',
   'reset', 'pause', 'progressBar', 'stageStatus', 'speed', 'speedValue', 'brightness', 'brightnessValue',
   'phaseToggle', 'gridToggle', 'ui', 'uibody', 'minui', 'circuitPanel', 'circuitToggle', 'circuitStatus',
   'circuitTarget', 'circuitReadout', 'iterationTrack', 'modeProbability', 'boxProbability', 'normValue',
-  'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry'].map(id => [id, byId(id)]));
+  'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry',
+  'currentToggle', 'particlesToggle', 'trailsToggle', 'particleCount', 'particleCountValue',
+  'particleSize', 'particleSizeValue', 'arrowGrid', 'arrowGridValue', 'currentGain', 'currentGainValue',
+  'particleProbability', 'flowStatus'].map(id => [id, byId(id)]));
 const geometry = createGroverGeometry(dom.groverGeometry);
 const canvas = dom.c;
-let gl, waveTexture, waveFbo, vao, reconstruction, renderer, ready = false;
+let gl, waveTexture, waveFbo, vao, reconstruction, renderer, flow, ready = false;
 let waveDirty = true, renderDirty = true, frameRecordingActive = false, lastTime = null, glError = 0;
 let lastUiKey = '', previousBusy = null, cachedBoxProbability = 0;
 const targetButtons = [], waveCells = [];
@@ -40,12 +46,19 @@ function makeTargetGrid() {
 
 function chooseTarget(q) {
   if (!simulation.setTarget(q)) return false;
+  flow?.reset(params.particleCount);
   markChanged(); syncUi(); return true;
 }
-function reset() { simulation.reset(); markChanged(); syncUi(); }
+function reset() { simulation.reset(); flow?.reset(params.particleCount); markChanged(); syncUi(); }
 function startNext() { if (simulation.startNext()) { markChanged(); syncUi(); return true; } return false; }
-function runFull() { if (simulation.runFull()) { markChanged(); syncUi(); return true; } return false; }
+function runFull() { if (simulation.runFull()) { flow?.reset(params.particleCount); markChanged(); syncUi(); return true; } return false; }
 function togglePause() { simulation.paused = !simulation.paused; lastUiKey = ''; syncUi(); }
+function setParticleCount(value) {
+  if (simulation.active) return false;
+  params.particleCount = Math.max(256, Math.min(16000, Math.round(Number(value) || 4000)));
+  dom.particleCount.value = params.particleCount; dom.particleCountValue.textContent = params.particleCount.toLocaleString();
+  reset(); return true;
+}
 
 function syncUi() {
   const gate = simulation.active || simulation.last;
@@ -78,6 +91,7 @@ function syncUi() {
   dom.next.disabled = busy || complete;
   dom.full.disabled = busy;
   dom.pause.textContent = simulation.paused ? 'Resume' : 'Pause';
+  dom.particleCount.disabled = busy;
   dom.oracle.textContent = `Oracle · ${targetText}`;
   dom.progressBar.style.width = `${100 * progress}%`;
   const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
@@ -122,6 +136,13 @@ function syncUi() {
   document.documentElement.dataset.gate = kind;
   document.documentElement.dataset.progress = String(progress);
   document.documentElement.dataset.target = String(target);
+  if (flow) {
+    const stats = flow.statistics(target, progress, !busy || simulation.paused);
+    dom.particleProbability.textContent = formatProbability(stats.boxProbability);
+    dom.flowStatus.textContent = `${stats.count.toLocaleString()} guided particles · sampled spatial probability`;
+    document.documentElement.dataset.particleFailures = String(stats.failures);
+    document.documentElement.dataset.particleLag = String(stats.maxLag);
+  }
   if (previousBusy !== busy) { previousBusy = busy; dom.waveArea.classList.toggle('busy', busy); }
 }
 
@@ -140,6 +161,19 @@ function installEvents() {
     dom.gridToggle.setAttribute('aria-pressed', String(params.showGrid));
     dom.waveLabels.hidden = !params.showGrid; renderDirty = true;
   });
+  for (const [id, key] of [['currentToggle','showCurrent'],['particlesToggle','showParticles'],['trailsToggle','showTrails']]) {
+    dom[id].addEventListener('click', () => {
+      params[key] = !params[key]; dom[id].setAttribute('aria-pressed', String(params[key]));
+      if (key === 'showTrails') flow?.clearTrails();
+      renderDirty = true;
+    });
+  }
+  for (const key of ['particleSize','arrowGrid','currentGain']) {
+    dom[key].addEventListener('input', () => {
+      params[key] = Number(dom[key].value); dom[`${key}Value`].textContent = String(params[key]); renderDirty = true;
+    });
+  }
+  dom.particleCount.addEventListener('change', () => setParticleCount(dom.particleCount.value));
   dom.minui.addEventListener('click', () => {
     dom.uibody.hidden = !dom.uibody.hidden; dom.minui.textContent = dom.uibody.hidden ? '+' : '−';
     dom.minui.setAttribute('aria-expanded', String(!dom.uibody.hidden));
@@ -177,10 +211,12 @@ function compileShader(type, source) {
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
   return shader;
 }
-function createProgram(vertex, fragment, uniforms) {
+function createProgram(vertex, fragment, uniforms, varyings) {
   const program = gl.createProgram();
   const vs = compileShader(gl.VERTEX_SHADER, vertex), fs = compileShader(gl.FRAGMENT_SHADER, fragment);
-  gl.attachShader(program, vs); gl.attachShader(program, fs); gl.linkProgram(program);
+  gl.attachShader(program, vs); gl.attachShader(program, fs);
+  if (varyings) gl.transformFeedbackVaryings(program, varyings, gl.INTERLEAVED_ATTRIBS);
+  gl.linkProgram(program);
   gl.deleteShader(vs); gl.deleteShader(fs);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
   return { program, uniforms: Object.fromEntries(uniforms.map(name => [name, gl.getUniformLocation(program, name)])) };
@@ -212,13 +248,21 @@ function render() {
   gl.uniform1f(u.uGateFlash, gate ? Math.sin(Math.PI * gate.progress) : 0);
   gl.uniform1f(u.uPixelSize, 1 / canvas.width);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  flow.render(canvas, { ...params, target: simulation.target }, simulation.active);
   glError = gl.getError() || glError;
   document.documentElement.dataset.glError = String(glError);
   renderDirty = false;
 }
 function advance(seconds) {
-  if (simulation.active && !simulation.paused && seconds > 0) {
-    simulation.advance(seconds); markChanged();
+  if (simulation.active && !simulation.paused && Number.isFinite(seconds) && seconds > 0) {
+    let remaining = seconds;
+    while (simulation.active && remaining > 1e-12) {
+      const gate = simulation.active, dt = Math.min(.02, remaining, gate.duration-gate.elapsed);
+      if (dt <= 1e-12) break;
+      flow?.step(gate, simulation.target, Math.min(1,(gate.elapsed+dt)/gate.duration), dt, params.showTrails);
+      simulation.advance(dt); remaining -= dt;
+    }
+    markChanged();
   }
   syncUi();
   if (ready && (waveDirty || renderDirty)) render();
@@ -230,6 +274,10 @@ const api = {
   isReady: () => ready,
   state: () => ({ ...simulation.snapshot(), boxProbability: cachedBoxProbability, grid: GRID, speed: params.speed }),
   reset, setTarget: chooseTarget, startNext, runFull, togglePause,
+  setParticleCount,
+  readParticles: () => flow.readParticles(),
+  readFlow: () => { if (simulation.active) flow.prepare(simulation.active, simulation.target); return flow.readField(); },
+  particleStats: () => flow.statistics(simulation.target, simulation.active?.progress ?? (simulation.last ? 1 : 0), true),
   setSpeed(value) { params.speed = Math.max(.1, Math.min(3, Number(value) || 1)); dom.speed.value = params.speed; dom.speedValue.textContent = `${params.speed.toFixed(2)}×`; },
   advanceTime(seconds) { advance(seconds); return this.state(); },
   beginFrameRecording() { frameRecordingActive = true; },
@@ -270,7 +318,9 @@ async function main() {
   waveFbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, waveFbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, waveTexture, 0);
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Could not create the floating-point wave texture.');
-  ready = true; dom.loading.hidden = true; document.documentElement.dataset.webgl2 = 'ready';
+  const initializedFlow = new FlowRenderer(gl, GRID, loadShader, createProgram);
+  await initializedFlow.init(vertex); flow = initializedFlow;
+  ready = true; lastUiKey = ''; syncUi(); dom.loading.hidden = true; document.documentElement.dataset.webgl2 = 'ready';
   document.documentElement.dataset.viewMode = 'single'; render();
   requestAnimationFrame(function loop(now) {
     const dt = lastTime === null ? 0 : Math.min(.05, Math.max(0, (now - lastTime) / 1000));

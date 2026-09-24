@@ -25,11 +25,12 @@ async function run() {
   }
   const api = window.GroverMultiRegion, doc = document;
   api.beginFrameRecording();
+  api.setParticleCount(512); // Dedicated flow fixture tests the full particle ensemble.
   const root = doc.getElementById('groverGeometry');
-  check('Single view with 16 choices and no particle or parallel controls',
+  check('Single view with 16 choices and conserved-flow controls',
     doc.querySelectorAll('#goalGrid [data-target]').length === 16 &&
     doc.querySelectorAll('#waveLabels [data-region]').length === 16 &&
-    !doc.getElementById('viewToggle') && !doc.querySelector('input[id*="particle"]'));
+    !doc.getElementById('viewToggle') && !!doc.getElementById('currentToggle') && !!doc.getElementById('particlesToggle'));
   const expectedOrder = Array.from({ length: 16 }, (_, i) => 4 * (i % 4) + 3 - Math.floor(i / 4));
   check('Selection grid uses the same spatial ordering as the wave', difference(
     [...doc.querySelectorAll('#goalGrid [data-target]')].map(button => Number(button.dataset.target)), expectedOrder) === 0);

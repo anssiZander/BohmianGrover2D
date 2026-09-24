@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"/><title>Probability flow GPU verification</title><link rel="icon" href="data:,"/>
+<body style="background:#061124;color:#d4e6ff;font:13px monospace">Loading the production page…
+<script type="module">
+const response=await fetch('../index.html'),source=await response.text();
+const html=source.replace('<head>','<head><base href="../"/>').replace('</body>','<script type="module" src="./tests/flow-browser-check.js"><'+'/script></body>');
+document.open();document.write(html);document.close();
+</script></body></html>
