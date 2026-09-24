@@ -8,6 +8,21 @@
 const clamp01 = value => Math.max(0, Math.min(1, value));
 const norm2 = z => z[0] * z[0] + z[1] * z[1];
 
+// Effective basis: |0> = marked, |1> = the equal unmarked superposition.
+// Project first, then normalize. This is not a reduced single-qubit state.
+export function effectiveBlochState(marked, unmarked) {
+  const markedWeight = norm2(marked), unmarkedWeight = norm2(unmarked);
+  const weight = markedWeight + unmarkedWeight;
+  if (weight < 1e-12) return { vector: null, weight, conditionalMarked: null };
+  const [mr, mi] = marked, [ur, ui] = unmarked;
+  return {
+    vector: [2 * (mr * ur + mi * ui) / weight,
+      2 * (mr * ui - mi * ur) / weight, (markedWeight - unmarkedWeight) / weight],
+    weight: clamp01(weight),
+    conditionalMarked: clamp01(markedWeight / weight),
+  };
+}
+
 function mix(state, angle) {
   const c = Math.cos(angle), s = Math.sin(angle);
   for (const bit of [1, 2]) {
@@ -51,6 +66,7 @@ export function groverGeometryState(target, gate = 0, progress = 1) {
   const planeProbability = norm2(unmarked) + targetProbability;
   return {
     amplitudes: state,
+    bloch: effectiveBlochState(marked, unmarked),
     real: [unmarked[0], marked[0]],
     imaginary: [unmarked[1], marked[1]],
     targetProbability: clamp01(targetProbability),
@@ -61,9 +77,9 @@ export function groverGeometryState(target, gate = 0, progress = 1) {
 const gateNames = ['Input |00⟩', 'Prepare A', 'Oracle Oω', 'Inverse A†', 'Reference S₀₀', 'Forward A'];
 const descriptions = [
   'Start in |00⟩. Preparation will create the balanced search state |s⟩.',
-  'A spreads the input into four equal amplitudes. The state arrives at |s⟩, 30° above the unmarked axis.',
-  'The oracle turns the marked amplitude through π. Its probability stays at 25% while its sign reverses.',
-  'A† reverses the box mixing. The intermediate state can leave the marked/unmarked plane.',
+  'A spreads the input into four equal amplitudes. The cyan point marks the prepared state |s⟩.',
+  'The oracle rotates the relative phase by π around the vertical axis. Marked probability stays at 25%.',
+  'A† reverses the box mixing. The unit vector shows the normalized projection; its subspace weight can change.',
   'S₀₀ phase-flips the |00⟩ amplitude. This is the central reflection of the three-part diffuser.',
   'A completes the diffuser. Interference cancels the unmarked amplitudes and builds the marked answer.',
 ];
@@ -71,75 +87,169 @@ const descriptions = [
 export function createGroverGeometry(root) {
   const get = name => root.querySelector(`[data-geometry="${name}"]`);
   const nodes = Object.fromEntries([
-    'real', 'imaginary', 'realDot', 'imaginaryDot', 'realTrace', 'imaginaryTrace',
-    'startReal', 'startImaginary', 'status', 'target', 'description',
-    'markedValue', 'markedBar', 'outsideValue', 'outsideBar', 'liveDescription',
+    'sphere', 'backGrid', 'frontGrid', 'axes', 'xLabel', 'yLabel',
+    'northLabel', 'southLabel', 'northDot', 'southDot',
+    'vector', 'tip', 'tipHalo', 'frontTrace', 'backTrace', 'gateStart',
+    'preparedDot', 'preparedLabel', 'status', 'target', 'description',
+    'markedValue', 'markedBar', 'weightValue', 'weightBar', 'outsideValue',
+    'conditionalValue', 'normValue', 'liveDescription', 'resetView',
   ].map(name => [name, get(name)]));
-  const center = [170, 154], radius = 110;
-  const point = vector => [center[0] + radius * vector[0], center[1] - radius * vector[1]];
-  const coordinate = vector => point(vector).map(value => value.toFixed(3)).join(' ');
-  const path = vectors => vectors.map((vector, i) => `${i ? 'L' : 'M'}${coordinate(vector)}`).join(' ');
-  let lastKey = '', curveKey = '', samples = [];
+  const center = [180, 153], radius = 108;
+  const defaultView = { yaw: .65, pitch: .26 };
+  let yaw = defaultView.yaw, pitch = defaultView.pitch;
+  let lastKey = '', curveKey = '', gridKey = '', samples = [], frame = null, drag = null;
+  const labels = ['00', '01', '10', '11'];
+  const percent = value => `${(100 * value).toFixed(1)}%`;
+  const dot = (a, b) => a.reduce((sum, value, i) => sum + value * b[i], 0);
+  let right, up, eye;
 
-  function arrow(node, vector, dot) {
-    const [x, y] = point(vector), visible = Math.hypot(...vector) > 1e-7;
-    node.setAttribute('d', `M${center.join(' ')} L${x.toFixed(3)} ${y.toFixed(3)}`);
-    node.setAttribute('opacity', visible ? '1' : '0');
-    if (dot) {
-      dot.setAttribute('cx', x.toFixed(3));
-      dot.setAttribute('cy', y.toFixed(3));
-      dot.setAttribute('opacity', visible ? '1' : '0');
-    }
+  function camera() {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    right = [cy, -sy, 0]; up = [-sy * sp, -cy * sp, cp]; eye = [sy * cp, cy * cp, sp];
   }
+  function project(v) {
+    return [center[0] + radius * dot(v, right), center[1] - radius * dot(v, up), dot(v, eye)];
+  }
+  const xy = p => `${p[0].toFixed(3)} ${p[1].toFixed(3)}`;
+
+  // Split paths at the sphere's front/back boundary. Null vectors break a path
+  // if the normalized projection becomes undefined; no false connecting arc.
+  function hemispherePaths(points) {
+    const paths = { front: '', back: '' };
+    for (let i = 1; i < points.length; i++) {
+      if (!points[i - 1] || !points[i]) continue;
+      const a = project(points[i - 1]), b = project(points[i]);
+      const frontA = a[2] >= 0, frontB = b[2] >= 0;
+      if (frontA === frontB) paths[frontA ? 'front' : 'back'] += `M${xy(a)}L${xy(b)}`;
+      else {
+        const t = a[2] / (a[2] - b[2]), cross = a.map((value, k) => value + t * (b[k] - value));
+        paths[frontA ? 'front' : 'back'] += `M${xy(a)}L${xy(cross)}`;
+        paths[frontB ? 'front' : 'back'] += `M${xy(cross)}L${xy(b)}`;
+      }
+    }
+    return paths;
+  }
+
+  function positionDot(node, vector, size = 4) {
+    node.setAttribute('visibility', vector ? 'visible' : 'hidden');
+    if (!vector) return;
+    const [x, y, depth] = project(vector);
+    node.setAttribute('cx', x.toFixed(3)); node.setAttribute('cy', y.toFixed(3));
+    node.setAttribute('r', size);
+    node.setAttribute('opacity', depth < 0 ? '.55' : '1');
+  }
+  function label(node, vector, dx = 0, dy = 0) {
+    const [x, y] = project(vector);
+    node.setAttribute('x', (x + dx).toFixed(3)); node.setAttribute('y', (y + dy).toFixed(3));
+  }
+
+  function draw() {
+    if (!frame || root.hidden) return;
+    camera();
+    const viewKey = `${yaw}/${pitch}`;
+    if (viewKey !== gridKey) {
+      gridKey = viewKey;
+      const circles = [];
+      for (const z of [-.5, 0, .5]) {
+        const r = Math.sqrt(1 - z * z);
+        circles.push(Array.from({ length: 129 }, (_, i) => {
+          const t = i * Math.PI / 64; return [r * Math.cos(t), r * Math.sin(t), z];
+        }));
+      }
+      for (let longitude = 0; longitude < 4; longitude++) {
+        const phi = longitude * Math.PI / 4;
+        circles.push(Array.from({ length: 129 }, (_, i) => {
+          const t = i * Math.PI / 64; return [Math.sin(t) * Math.cos(phi), Math.sin(t) * Math.sin(phi), Math.cos(t)];
+        }));
+      }
+      const paths = circles.map(hemispherePaths);
+      nodes.frontGrid.setAttribute('d', paths.map(p => p.front).join(''));
+      nodes.backGrid.setAttribute('d', paths.map(p => p.back).join(''));
+      nodes.axes.setAttribute('d', [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map(v =>
+        `M${xy(project(v.map(x => -1.16 * x)))}L${xy(project(v.map(x => 1.16 * x)))}`).join(''));
+      label(nodes.xLabel, [1.22, 0, 0], 0, 4); label(nodes.yLabel, [0, 1.22, 0], 0, 4);
+      label(nodes.northLabel, [0, 0, 1.22], 0, -5); label(nodes.southLabel, [0, 0, -1.22], 0, 11);
+      positionDot(nodes.northDot, [0, 0, 1], 2.6); positionDot(nodes.southDot, [0, 0, -1], 2.6);
+      const prepared = [Math.sqrt(3) / 2, 0, -.5];
+      positionDot(nodes.preparedDot, prepared, 5.5); label(nodes.preparedLabel, prepared, 12, 3);
+    }
+
+    const { target, gate, progress, state } = frame;
+    const nextCurveKey = `${target}/${gate}`;
+    if (nextCurveKey !== curveKey) {
+      curveKey = nextCurveKey;
+      samples = Array.from({ length: 129 }, (_, i) => groverGeometryState(target, gate, i / 128).bloch.vector);
+    }
+    const prefix = samples.slice(0, Math.floor(progress * 128) + 1);
+    prefix.push(state.bloch.vector);
+    const trace = gate ? hemispherePaths(prefix) : { front: '', back: '' };
+    nodes.frontTrace.setAttribute('d', trace.front); nodes.backTrace.setAttribute('d', trace.back);
+    positionDot(nodes.gateStart, samples[0], 4.2);
+    const vector = state.bloch.vector;
+    nodes.vector.setAttribute('visibility', vector ? 'visible' : 'hidden');
+    if (vector) {
+      const tip = project(vector);
+      nodes.vector.setAttribute('d', `M${center.join(' ')}L${xy(tip)}`);
+      nodes.vector.setAttribute('stroke-dasharray', tip[2] < 0 ? '5 3' : 'none');
+      nodes.vector.setAttribute('opacity', tip[2] < 0 ? '.65' : '1');
+    }
+    positionDot(nodes.tipHalo, vector, 9); positionDot(nodes.tip, vector, 4.2);
+    root.dataset.viewYaw = String(yaw); root.dataset.viewPitch = String(pitch);
+  }
+
+  function orbit(nextYaw, nextPitch) {
+    yaw = nextYaw; pitch = Math.max(-1.15, Math.min(1.15, nextPitch)); draw();
+  }
+  nodes.sphere.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, yaw, pitch };
+    nodes.sphere.setPointerCapture(event.pointerId); nodes.sphere.focus();
+  });
+  nodes.sphere.addEventListener('pointermove', event => {
+    if (drag?.id !== event.pointerId) return;
+    orbit(drag.yaw + (event.clientX - drag.x) * .009, drag.pitch - (event.clientY - drag.y) * .009);
+  });
+  const stopDrag = () => { drag = null; };
+  nodes.sphere.addEventListener('pointerup', stopDrag);
+  nodes.sphere.addEventListener('pointercancel', stopDrag);
+  nodes.sphere.addEventListener('lostpointercapture', stopDrag);
+  nodes.sphere.addEventListener('keydown', event => {
+    const turns = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, .12], ArrowDown: [0, -.12] };
+    if (turns[event.key]) { event.preventDefault(); orbit(yaw + turns[event.key][0], pitch + turns[event.key][1]); }
+    else if (event.key === 'Home') { event.preventDefault(); orbit(defaultView.yaw, defaultView.pitch); }
+  });
+  nodes.resetView.addEventListener('click', () => orbit(defaultView.yaw, defaultView.pitch));
 
   return {
     update({ target, gate, progress = 1, running = false, paused = false, parallel = false }) {
       root.hidden = parallel;
-      if (parallel) {
-        lastKey = '';
-        return;
-      }
+      if (parallel) { lastKey = ''; drag = null; return; }
       progress = clamp01(progress);
-      const key = `${target}/${gate}/${progress}/${running}/${paused}/${parallel}`;
+      const key = `${target}/${gate}/${progress}/${running}/${paused}`;
       if (key === lastKey) return;
       lastKey = key;
       const state = groverGeometryState(target, gate, progress);
-      const start = groverGeometryState(target, gate, 0);
-      const labels = ['00', '01', '10', '11'];
+      frame = { target, gate, progress, state };
+      draw();
       const finished = gate === 5 && !running;
-      const percent = value => `${(100 * value).toFixed(1)}%`;
-
-      arrow(nodes.real, state.real, nodes.realDot);
-      arrow(nodes.imaginary, state.imaginary, nodes.imaginaryDot);
-      arrow(nodes.startReal, start.real);
-      arrow(nodes.startImaginary, start.imaginary);
-
-      // Draw the current gate's actual projected path, including its complex
-      // component, rather than inventing a planar rotation for the subgates.
-      const nextCurveKey = `${target}/${gate}`;
-      if (nextCurveKey !== curveKey) {
-        curveKey = nextCurveKey;
-        samples = Array.from({ length: 65 }, (_, i) => groverGeometryState(target, gate, i / 64));
-      }
-      const prefix = samples.slice(0, Math.floor(progress * 64) + 1);
-      prefix.push(state);
-      nodes.realTrace.setAttribute('d', gate ? path(prefix.map(s => s.real)) : '');
-      nodes.imaginaryTrace.setAttribute('d', gate ? path(prefix.map(s => s.imaginary)) : '');
       nodes.target.textContent = `Target |${labels[target]}⟩`;
       nodes.status.textContent = finished ? 'Answer reached' : `${gateNames[gate]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : gate ? ' · held' : ''}`;
-      nodes.description.textContent = finished
-        ? 'One oracle and one diffuser have carried |s⟩ to the marked state |ω⟩. The other three logical amplitudes cancel.'
-        : descriptions[gate];
+      nodes.description.textContent = !state.bloch.vector ? 'The projection has zero weight, so its direction is undefined.'
+        : finished ? 'The state has reached the marked north pole. All probability is in the Grover subspace and in the marked answer.' : descriptions[gate];
       nodes.markedValue.textContent = percent(state.targetProbability);
+      nodes.weightValue.textContent = percent(state.bloch.weight);
       nodes.outsideValue.textContent = percent(state.outsideProbability);
+      nodes.conditionalValue.textContent = state.bloch.conditionalMarked === null ? '—' : percent(state.bloch.conditionalMarked);
+      nodes.normValue.textContent = state.bloch.vector ? '|r| = 1' : 'r undefined';
       nodes.markedBar.style.width = percent(state.targetProbability);
-      nodes.outsideBar.style.width = percent(state.outsideProbability);
-      nodes.liveDescription.textContent = `${gateNames[gate]}. Marked probability ${percent(state.targetProbability)}; outside the displayed plane ${percent(state.outsideProbability)}. Yellow is the real projection and violet is the imaginary projection.`;
+      nodes.weightBar.style.width = percent(state.bloch.weight);
+      nodes.liveDescription.textContent = `${gateNames[gate]}. The gold unit vector represents the normalized marked/unmarked projection. Subspace weight ${percent(state.bloch.weight)}; actual marked probability ${percent(state.targetProbability)}. Drag or use arrow keys to rotate the view.`;
       root.dataset.gate = String(gate);
       root.dataset.progress = String(progress);
       root.dataset.target = String(target);
-      root.dataset.real = JSON.stringify(state.real);
-      root.dataset.imaginary = JSON.stringify(state.imaginary);
+      root.dataset.blochVector = JSON.stringify(state.bloch.vector);
+      root.dataset.subspaceProbability = String(state.bloch.weight);
+      root.dataset.conditionalMarked = String(state.bloch.conditionalMarked);
       root.dataset.markedProbability = String(state.targetProbability);
       root.dataset.outsideProbability = String(state.outsideProbability);
     },

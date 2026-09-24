@@ -1,5 +1,42 @@
 # Verification — parallel inverse mixing
 
+## Effective Bloch sphere — 2026-09-24
+
+Replaced the real/imaginary projected arrows with a rotatable effective Bloch
+sphere in single-grid view. The vector represents the normalized marked/equal-
+unmarked projection; a separate bar reports its probability weight. Actual and
+conditional marked probabilities are shown separately. The sphere follows the
+existing gate clock; the wave/particle shaders and numerical evolution did not
+change.
+
+`node tests/geometry-check.mjs` still passes all **660 intermediate states**
+against an independent box-spectrum calculation (maximum amplitude difference
+`7.268e-16`). Added checks cover all six Pauli-axis states, global-phase
+invariance, partial and zero-weight projections, subspace probability accounting,
+the oracle's complex midpoint, and all four marked north-pole endpoints.
+Maximum unit-vector norm error was `3.331e-16`.
+
+An external fixture passed **144/144 browser/GPU checks** on the NVIDIA GeForce
+RTX 4070 Ti SUPER (ANGLE / D3D11). It compared the displayed vector, subspace
+weight, conditional probability, actual marked probability, and outside weight
+with the production GPU wave for every target at the start, approximately 25%,
+50%, 75%, and end of every gate. Maximum Bloch-coordinate error was `7.674e-7`;
+maximum weight/probability error was `3.662e-7`. All checkpoints held, pause froze
+every gate exactly, target/reset and view changes stayed synchronized, and queued
+playback visited all five gates and reached the marked north pole. The fixture
+used 1,000 particles, the production 128² wave grid, and `dt = 0.00003`. WebGL
+reported error code `0`, and the fixture had no browser warnings or errors.
+
+On the normal page with 12,000 particles, pointer dragging and arrow keys rotated
+the view without changing the represented state. Home and Reset view restored
+the camera. Visual inspection covered preparation and a paused oracle at 70%:
+the tip and its trace lie on the sphere, the circuit and sphere show the same
+gate/progress, and marked probability remains 25% with 100% subspace weight.
+A complete default-particle run finished with the numerical marked probability
+at 100.0%, the vector at the north pole, and subspace weight 100.0%. The normal
+page also reported WebGL error code `0` with no browser warnings or errors.
+JavaScript syntax, the inherited static checks, and `git diff --check` passed.
+
 ## Diagram limited to single-grid view — 2026-09-24
 
 The projected-arrow diagram now starts hidden and is shown only in single-grid

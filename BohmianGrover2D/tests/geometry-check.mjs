@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { groverGeometryState } from '../grover-geometry.js';
+import { groverGeometryState, effectiveBlochState } from '../grover-geometry.js';
 
 const mul = ([a, b], [c, d]) => [a * c - b * d, a * d + b * c];
 const phase = angle => [Math.cos(angle), Math.sin(angle)];
@@ -9,6 +9,23 @@ const transform = a => a.map((_, q) => a.reduce((sum, value, r) => {
   return [sum[0] + sign * value[0] / 2, sum[1] + sign * value[1] / 2];
 }, [0, 0]));
 const error = (a, b) => Math.max(...a.flatMap((v, q) => v.map((x, c) => Math.abs(x - b[q][c]))));
+const vectorError = (a, b) => Math.max(...a.map((x, i) => Math.abs(x - b[i])));
+
+// Pauli-axis states fix orientation, including the sign of the complex Y axis.
+const half = 1 / Math.sqrt(2);
+for (const [marked, unmarked, vector] of [
+  [[1, 0], [0, 0], [0, 0, 1]],
+  [[0, 0], [1, 0], [0, 0, -1]],
+  [[half, 0], [half, 0], [1, 0, 0]],
+  [[half, 0], [-half, 0], [-1, 0, 0]],
+  [[half, 0], [0, half], [0, 1, 0]],
+  [[half, 0], [0, -half], [0, -1, 0]],
+]) assert.ok(vectorError(effectiveBlochState(marked, unmarked).vector, vector) < 1e-12);
+const partial = effectiveBlochState([.3, .4], [.1, -.2]);
+assert.ok(Math.abs(partial.weight - .3) < 1e-12);
+assert.ok(Math.abs(partial.conditionalMarked - 5 / 6) < 1e-12);
+assert.ok(vectorError(partial.vector, effectiveBlochState(mul([.3, .4], phase(.842)), mul([.1, -.2], phase(.842))).vector) < 1e-12, 'A global phase cannot move the Bloch vector');
+assert.equal(effectiveBlochState([0, 0], [0, 0]).vector, null, 'A zero-weight projection has no direction');
 
 // Independent reference: propagate the four discrete sine eigenmodes with
 // their box energies, then transform into the diagram's stated phase frame.
@@ -35,7 +52,7 @@ function physicalReference(target, gate, progress) {
     phase(meanEnergy * signedTime + referencePhase - popcount(q) * Math.PI / 2)));
 }
 
-let count = 0, maxError = 0;
+let count = 0, maxError = 0, maxNormError = 0;
 for (let target = 0; target < 4; target++) {
   for (let gate = 1; gate <= 5; gate++) for (let sample = 0; sample <= 32; sample++) {
     const progress = sample / 32, state = groverGeometryState(target, gate, progress);
@@ -45,6 +62,12 @@ for (let target = 0; target < 4; target++) {
     const total = [...state.real, ...state.imaginary].reduce((sum, value) => sum + value * value, 0) + state.outsideProbability;
     assert.ok(Math.abs(total - 1) < 1e-12, 'Projection and outside probability must sum to one');
     assert.ok(Math.abs(state.targetProbability - state.real[1] ** 2 - state.imaginary[1] ** 2) < 1e-12);
+    const { vector, weight, conditionalMarked } = state.bloch;
+    maxNormError = Math.max(maxNormError, Math.abs(Math.hypot(...vector) - 1));
+    assert.ok(Math.abs(Math.hypot(...vector) - 1) < 1e-12, 'Effective Bloch vector must have unit length');
+    assert.ok(Math.abs(weight + state.outsideProbability - 1) < 1e-12);
+    assert.ok(Math.abs(weight * (1 + vector[2]) / 2 - state.targetProbability) < 1e-12, 'Bloch population times subspace weight must recover actual marked probability');
+    assert.ok(Math.abs(conditionalMarked - (1 + vector[2]) / 2) < 1e-12);
     count++;
   }
   for (let gate = 0; gate < 5; gate++) {
@@ -53,14 +76,18 @@ for (let target = 0; target < 4; target++) {
   }
   const prepared = groverGeometryState(target, 1, 1);
   assert.ok(error([prepared.real], [[Math.sqrt(3) / 2, .5]]) < 1e-12);
+  assert.ok(vectorError(prepared.bloch.vector, [Math.sqrt(3) / 2, 0, -.5]) < 1e-12);
   const halfOracle = groverGeometryState(target, 2, .5);
   assert.ok(Math.abs(halfOracle.real[1]) < 1e-12 && Math.abs(halfOracle.imaginary[1] + .5) < 1e-12);
   assert.ok(Math.abs(halfOracle.targetProbability - .25) < 1e-12, 'Phase turning must not change marked probability');
+  assert.ok(vectorError(halfOracle.bloch.vector, [0, Math.sqrt(3) / 2, -.5]) < 1e-12, 'Oracle must turn the phase around Z');
   const oracle = groverGeometryState(target, 2, 1);
   assert.ok(error([oracle.real], [[Math.sqrt(3) / 2, -.5]]) < 1e-12);
   const final = groverGeometryState(target, 5, 1);
   assert.ok(error([final.real], [[0, 1]]) < 1e-12 && final.outsideProbability < 1e-12);
+  assert.ok(vectorError(final.bloch.vector, [0, 0, 1]) < 1e-12 && Math.abs(final.bloch.weight - 1) < 1e-12);
 }
 assert.ok(groverGeometryState(3, 3, 1).outsideProbability > .66, 'Inverse subgate must expose the state outside the usual Grover plane');
 console.log(`${count} intermediate states match independent box-spectrum evolution; max amplitude error ${maxError.toExponential(3)}.`);
-console.log('All targets: continuous gate boundaries, 30-degree preparation, complex oracle phase, probability accounting, and exact marked endpoint passed.');
+console.log(`All Bloch vectors retain unit length; max norm error ${maxNormError.toExponential(3)}.`);
+console.log('Pauli axes, phase invariance, zero-weight handling, continuous gates, complex oracle rotation, subspace weights, and marked north-pole endpoints passed.');

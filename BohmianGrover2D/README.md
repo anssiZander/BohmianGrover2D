@@ -39,42 +39,49 @@ The first `A` prepares the balanced state. `O_w` phase-marks the selected state,
 
 The currently running gate pulses in blue, completed gates remain green with checkmarks, and upcoming gates stay dim. The status line reports the operation number and progress; pausing also freezes and recolors the active circuit gate. In parallel view the target reads “all four targets,” while single view shows the chosen `w = |q⟩`. Use the minus/plus button to minimize or restore the panel. Minimizing it moves the diagnostics panel upward.
 
-## Grover geometry
+## Effective Grover Bloch sphere
 
-In single-grid view, the diagnostics panel contains **Grover geometry · projected arrows**, an animated
-SVG diagram synchronized with the numerical operation's progress. It follows
-preparation, oracle, inverse mixing, reference reflection, and forward mixing,
-including individual buttons, queued runs, pause, reset, and target selection.
-It is hidden in parallel view, and its SVG updates resume when returning to
-single-grid view. The label and norm identity explicitly distinguish the
-projected components from the unit-length full state vector.
+In single-grid view, the diagnostics panel shows an interactive sphere
+synchronized with preparation, oracle, inverse mixing, reference phase, and
+forward mixing. It follows individual operations, queued runs, pause, reset,
+and target selection. It is hidden and skips drawing in parallel view.
 
-The vertical axis is the marked state `|ω⟩`; the horizontal axis is the normalized
-equal sum `|s′⟩` of the other three states, in the phase convention described below.
-The cyan reference arrow is the prepared state `|s⟩`, at the actual four-state
-angle of 30 degrees. Yellow and violet arrows show the real and imaginary
-projections of the evolving state. Faint arrows retain the current gate's input;
-curves trace the moving tips. No endpoint interpolation or independent animation
-clock is used.
+The north pole is the marked state `|ω⟩`; the south pole is the normalized equal
+sum `|s′⟩` of the other three states, in the fixed phase convention below. If
+their amplitudes are `m` and `u`, the sphere represents the normalized projection
+`(m|ω⟩ + u|s′⟩)/√p`, where `p = |m|² + |u|²`. This is an effective two-state
+representation, not a reduced state of either physical qubit.
 
-A phase pulse passes through complex amplitudes, so a single real arrow cannot
-represent it. Likewise the bare mixer subgates can leave the usual Grover plane.
-**Outside this plane** reports the remaining probability in the other two logical
-directions; the projected arrows are not renormalized. Marked probability equals
-the sum of the squares of the two vertical arrow components.
+The gold vector has unit length in three dimensions, with coordinates
+`r = (2 Re(m* u), 2 Im(m* u), |m|² − |u|²) / p`, where `m*` is the complex
+conjugate. Its tip stays on the sphere; the screen projection can look shorter.
+Drag to orbit, or focus the sphere and use the arrow keys. **Reset view** or
+**Home** restores the initial viewpoint. Dashed, dimmer segments lie on the
+rear hemisphere. A gold curve traces the current gate's path, a pale ring marks
+its input, and a cyan ring marks the prepared `|s⟩`.
 
-`grover-geometry.js` evaluates the exact four-mode gate evolution at the current
-gate fraction. The fixed logical rephasing is `i^(-popcount(q))`. The common
-box-energy phase is removed, and an additional overall phase equal to the
-reference-pulse angle selects the conventional diffuser sign. Explicitly, if
-`a_q` is the numerical wave's logical amplitude, the plotted amplitude is
-`b_q = i^(-popcount(q)) exp(i (E₁+E₂) t_signed / ℏ + i φ_reference) a_q`.
-Here `E₁,E₂` are the one-axis discrete sine energies. This makes preparation
-`R(πp/4) ⊗ R(πp/4)` and inverse mixing `R(-πp/4) ⊗ R(-πp/4)` in the diagram.
-The spatial wave retains its original phases and numerical evolution.
+The **In Grover subspace** bar reports `p`; **Outside** reports `1 − p`. Those
+values matter because preparation and the separate diffuser subgates can leave
+this two-dimensional complex subspace. **Marked within subspace** is
+`(1 + r_z)/2`, while **Marked · full state** is `p(1 + r_z)/2`. The oracle rotates
+the relative phase around the vertical axis with marked probability fixed at
+25%. The complete search ends at the north pole with subspace weight 100%.
+A zero-weight projection, if encountered, hides the vector and reports its
+direction as undefined instead of inventing a unit vector.
+
+`grover-geometry.js` evaluates the exact four-mode evolution at the numerical
+gate's current fraction; it does not interpolate between endpoints or use an
+independent animation clock. In terms of the numerical wave's logical amplitudes
+`a_q`, the effective basis uses `b_q = i^(-popcount(q)) a_q`, so the prepared
+state has equal amplitudes up to a common phase. The internal amplitude model
+also removes the common box-energy phase and chooses the conventional diffuser
+sign. These global phases cancel from the Bloch vector and all weight readouts.
+The sphere has a lightweight SVG renderer with an orthographic 3D projection;
+the spatial wave, particles, trails, and WebGL2 solvers retain their original
+phases, appearance, and evolution.
 
 The supplied PNG remains in `assets/grover-reflections.png` as a reference;
-the visible diagram is now drawn and animated entirely with SVG.
+the visible sphere is drawn and animated entirely with SVG.
 
 ## Guidance overlay
 
