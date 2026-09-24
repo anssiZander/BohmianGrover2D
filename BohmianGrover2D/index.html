@@ -110,10 +110,10 @@
   <div id="info" class="panel">
     <div class="head"><h3>Logical-state diagnostics</h3></div>
     <div id="logical"></div>
-    <details id="groverGeometry" class="groverGeometry" open>
-      <summary>Grover geometry · live gate arrows</summary>
+    <details id="groverGeometry" class="groverGeometry" open hidden>
+      <summary>Grover geometry · projected arrows</summary>
       <figure>
-        <div class="geometryMeta"><span data-geometry="target">Selected |11⟩</span><b data-geometry="status">Input |00⟩</b></div>
+        <div class="geometryMeta"><span data-geometry="target">Target |11⟩</span><b data-geometry="status">Input |00⟩</b></div>
         <svg viewBox="0 0 360 295" role="img" aria-labelledby="groverGeometryTitle groverGeometryDescription">
           <title id="groverGeometryTitle">Live state arrows in the marked and unmarked plane</title>
           <desc id="groverGeometryDescription" data-geometry="liveDescription">Yellow and violet arrows show the real and imaginary projections of the current state. They follow the active gate and stop with the simulation.</desc>
@@ -153,7 +153,8 @@
         </div>
         <figcaption>
           <p data-geometry="description">Start in |00⟩. Preparation will create the balanced search state |s⟩.</p>
-          <p class="note">Real and imaginary parts are shown separately, in a phase convention where |s⟩ is real. “Outside” measures probability in the other two logical directions.</p>
+          <p class="note">The full state has unit length. These arrows show its real and imaginary projections, in a phase convention where |s⟩ is real.</p>
+          <p class="note">(Yellow length)² + (violet length)² + outside probability = 1.</p>
         </figcaption>
       </figure>
     </details>

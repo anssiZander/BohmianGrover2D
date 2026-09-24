@@ -41,11 +41,13 @@ The currently running gate pulses in blue, completed gates remain green with che
 
 ## Grover geometry
 
-The diagnostics panel contains **Grover geometry · live gate arrows**, an animated
+In single-grid view, the diagnostics panel contains **Grover geometry · projected arrows**, an animated
 SVG diagram synchronized with the numerical operation's progress. It follows
 preparation, oracle, inverse mixing, reference reflection, and forward mixing,
 including individual buttons, queued runs, pause, reset, and target selection.
-In parallel view it shows the selected experiment.
+It is hidden in parallel view, and its SVG updates resume when returning to
+single-grid view. The label and norm identity explicitly distinguish the
+projected components from the unit-length full state vector.
 
 The vertical axis is the marked state `|ω⟩`; the horizontal axis is the normalized
 equal sum `|s′⟩` of the other three states, in the phase convention described below.

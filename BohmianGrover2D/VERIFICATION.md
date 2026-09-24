@@ -1,5 +1,18 @@
 # Verification — parallel inverse mixing
 
+## Diagram limited to single-grid view — 2026-09-24
+
+The projected-arrow diagram now starts hidden and is shown only in single-grid
+view. Parallel mode skips its SVG updates. The caption explicitly states that
+the full state has unit length and that the two squared arrow lengths plus the
+outside probability sum to one.
+
+Browser checks confirmed hidden/display-none in the default parallel view,
+visibility after switching to single view, the correct target label after
+selection, and correct visibility after switching back and forth. The inherited
+static checks, JavaScript syntax check, and whitespace checks passed. The
+geometry calculations and physical evolution were not modified.
+
 ## Live gate-arrow geometry — 2026-09-24
 
 Replaced the static picture with live SVG arrows derived from the four-mode

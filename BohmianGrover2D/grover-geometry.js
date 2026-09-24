@@ -94,6 +94,11 @@ export function createGroverGeometry(root) {
 
   return {
     update({ target, gate, progress = 1, running = false, paused = false, parallel = false }) {
+      root.hidden = parallel;
+      if (parallel) {
+        lastKey = '';
+        return;
+      }
       progress = clamp01(progress);
       const key = `${target}/${gate}/${progress}/${running}/${paused}/${parallel}`;
       if (key === lastKey) return;
@@ -120,7 +125,7 @@ export function createGroverGeometry(root) {
       prefix.push(state);
       nodes.realTrace.setAttribute('d', gate ? path(prefix.map(s => s.real)) : '');
       nodes.imaginaryTrace.setAttribute('d', gate ? path(prefix.map(s => s.imaginary)) : '');
-      nodes.target.textContent = `${parallel ? 'Selected' : 'Target'} |${labels[target]}⟩`;
+      nodes.target.textContent = `Target |${labels[target]}⟩`;
       nodes.status.textContent = finished ? 'Answer reached' : `${gateNames[gate]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : gate ? ' · held' : ''}`;
       nodes.description.textContent = finished
         ? 'One oracle and one diffuser have carried |s⟩ to the marked state |ω⟩. The other three logical amplitudes cancel.'
