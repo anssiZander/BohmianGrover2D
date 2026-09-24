@@ -1,5 +1,31 @@
 # Verification — MultiRegion 4×4
 
+## DoubleSlit-style trails and length control — 2026-09-24
+
+Replaced alpha-painted RGBA8 trails with soft swept stamps accumulated in
+RGBA16F, exponential exposure, and screen blending, following DoubleSlit2.0.
+The yellow palette and particle/current equations are unchanged. The new
+**Trail length** slider controls a 0.1–12-second half-life on the gate clock.
+Fading uses a full-precision scale, periodically baked into the GPU texture,
+so tiny time steps cannot round the half-float fade factor to one.
+
+`tests/trail-browser-check.html` passed **11/11 checks** on the NVIDIA GeForce
+RTX 4070 Ti SUPER (ANGLE / D3D11), including actual GPU density readbacks:
+
+- Identical wave and particle buffers at the same time with shortest and
+  longest trails; longer trails retain more history.
+- Length changes preserve paused history; reset clears it.
+- After 1,200 steps of 0.001 seconds with a 12-second half-life and no new
+  stamps, the retained intensity is `0.933033`, as expected.
+- After another 12 seconds and a GPU rebake, it is `0.466516`, as expected.
+- Live versus recording exposure differs by less than 1% at the checked time.
+- No WebGL errors. Browser console has no warnings or errors.
+
+Visual inspection confirmed connected, softly glowing golden paths and the
+working slider. The existing **15/15** numerical tests and static checks
+(58 DOM references, 15 shader/include sources) also pass. The earlier full
+wave/ensemble GPU results below were not rerun for this rendering-only change.
+
 ## Conserved current, particles, and trails — 2026-09-24
 
 Added the curl-free Neumann current `j = grad chi`, `laplacian chi = -d rho/dt`

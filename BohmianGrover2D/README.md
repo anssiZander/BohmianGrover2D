@@ -36,8 +36,14 @@ render targets is required. No dependencies or build step are needed.
 - **Current arrows**, **Particles**, and **Trails**, beneath the wave, toggle
   independently. Hidden particles continue evolving. The arrows display current
   strength on a compressed scale; particles move at current divided by density.
-- **Flow settings** adjusts arrow density/gain, dot size, and particle count.
+- **Flow settings** adjusts arrow density/gain, dot size, trail length, and particle count.
   Changing the count resets the search and is locked during a running gate.
+- **Trail length** sets the fading half-life (0.1–12 gate-time seconds, default
+  1.5). It can change during a gate without resetting the wave, particles, or
+  existing history. Faster playback advances trail fading on the same clock.
+  Trails use DoubleSlit2.0's soft stamps, additive floating-point accumulation,
+  exponential exposure, and screen blending, in the existing golden yellow.
+  Stamps sweep between integrated particle positions to keep paths connected.
 - **Particles inside goal box** is a finite-sample estimate of the spatial
   probability. Compare it with **Inside goal box**, not the logical percentage.
 
@@ -204,3 +210,5 @@ for measured results and visual checks.
 `/tests/flow-browser-check.html` additionally checks the GPU current, particle
 region counts and 8×8 spatial histograms, every target, pause, visibility, and
 the recording clock.
+`/tests/trail-browser-check.html` checks GPU trail accumulation/fading, length
+changes without disturbing the state, pause/reset, and recording exposure.

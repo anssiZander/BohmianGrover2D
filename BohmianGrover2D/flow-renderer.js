@@ -4,15 +4,15 @@ export class FlowRenderer {
   constructor(gl, grid, loadShader, createProgram) {
     Object.assign(this,{gl,grid,loadShader,createProgram});
     this.count=4000;this.index=0;this.trailIndex=0;this.gate=null;this.newGate=false;
-    this.trailSize=1024;this.elapsed=0;this.statsTime=-Infinity;
+    this.trailSize=1024;this.trailScale=1;this.elapsed=0;this.statsTime=-Infinity;
   }
   async init(vertex) {
     const loadShader=this.loadShader;
-    const [basis,shared,update,empty,points,dots,arrows,arrowFragment,trail,trailFragment,composite]=await Promise.all([
+    const [basis,shared,update,empty,points,dots,arrows,arrowFragment,trail,trailFragment,composite,fade]=await Promise.all([
       loadShader('flow_basis.frag'),loadShader('flow_sample.glsl'),loadShader('flow_particle_update.vert'),
       loadShader('particle_update.frag'),loadShader('flow_particles.vert'),loadShader('particle_render.frag'),
       loadShader('flow_arrows.vert'),loadShader('phase_arrows.frag'),loadShader('flow_trail.vert'),
-      loadShader('flow_trail.frag'),loadShader('flow_trail_composite.frag'),
+      loadShader('flow_trail.frag'),loadShader('flow_trail_composite.frag'),loadShader('flow_trail_fade.frag'),
     ]);
     const program=this.createProgram;
     this.basis=program(vertex,basis,['uFixed[0]','uRotating[0]','uPotential[0]','uGridSize']);
@@ -21,8 +21,9 @@ export class FlowRenderer {
     this.points=program(points,dots,['uPointSize','uDotSigma','uDotGain']);
     this.arrows=program(arrows.replace('// FLOW_SAMPLE',shared),arrowFragment,
       ['uWaveParts','uCurrentParts','uAngle','uRate','uGain','uArrowGrid']);
-    this.trail=program(trail,trailFragment,['uWidth']);
-    this.composite=program(vertex,composite,['uTrail','uFade']);
+    this.trail=program(trail,trailFragment,['uWidth','uStampGain']);
+    this.composite=program(vertex,composite,['uTrail','uScale']);
+    this.fade=program(vertex,fade,['uTrail','uFade']);
     const gl=this.gl;
     this.emptyVao=gl.createVertexArray();this.feedback=gl.createTransformFeedback();
     this.buffers=[gl.createBuffer(),gl.createBuffer()];
@@ -44,7 +45,8 @@ export class FlowRenderer {
     gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,this.currentParts,0);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]);
     this.checkFramebuffer();
-    this.trailTextures=[0,1].map(()=>this.texture(this.trailSize,gl.RGBA8,gl.UNSIGNED_BYTE));
+    // DoubleSlit2.0-style additive light density, tone-mapped only at display.
+    this.trailTextures=[0,1].map(()=>this.texture(this.trailSize,gl.RGBA16F,gl.HALF_FLOAT));
     this.trailFbos=this.trailTextures.map(tex=>{
       const fbo=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);
       gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);this.checkFramebuffer();return fbo;
@@ -66,6 +68,7 @@ export class FlowRenderer {
     const gl=this.gl;gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,texture);gl.uniform1i(uniform,unit);
   }
   clearTrails() {
+    this.trailScale=1;this.trailIndex=0;
     const gl=this.gl;gl.clearColor(0,0,0,0);
     for(const fbo of this.trailFbos) {gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -87,7 +90,7 @@ export class FlowRenderer {
     gl.uniform2fv(u['uPotential[0]'],this.data.potential);gl.uniform1f(u.uGridSize,this.grid);
     gl.drawArrays(gl.TRIANGLES,0,3);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
-  step(gate,target,end,dt,showTrails) {
+  step(gate,target,end,dt,params) {
     this.prepare(gate,target);
     const gl=this.gl,u=this.update.uniforms,before=this.index,after=1-before;
     gl.disable(gl.BLEND);gl.useProgram(this.update.program);
@@ -99,26 +102,36 @@ export class FlowRenderer {
     gl.endTransformFeedback();gl.disable(gl.RASTERIZER_DISCARD);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER,0,null);gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,null);
     this.index=after;this.newGate=false;this.elapsed+=dt;
-    if(showTrails) this.stampTrails(before,dt);
+    if(params.showTrails) this.stampTrails(before,dt,params);
   }
-  stampTrails(before,dt) {
-    const gl=this.gl,next=1-this.trailIndex,u=this.composite.uniforms;
-    gl.bindFramebuffer(gl.FRAMEBUFFER,this.trailFbos[next]);gl.viewport(0,0,this.trailSize,this.trailSize);
-    gl.bindVertexArray(this.emptyVao);gl.disable(gl.BLEND);gl.useProgram(this.composite.program);
-    this.bindTexture(this.trailTextures[this.trailIndex],0,u.uTrail);gl.uniform1f(u.uFade,Math.exp(-dt/1.1));
-    gl.drawArrays(gl.TRIANGLES,0,3);
-    gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(this.trail.program);gl.uniform1f(this.trail.uniforms.uWidth,1.1/this.trailSize);
+  stampTrails(before,dt,params) {
+    const gl=this.gl;
+    this.trailScale*=Math.exp(-Math.LN2*dt/params.trailHalfLife);
+    gl.viewport(0,0,this.trailSize,this.trailSize);
+    // Keep small per-step fades in full precision. Baking only at half intensity
+    // avoids half-float rounding that could otherwise freeze long, slow trails.
+    if(this.trailScale<.5) {
+      const next=1-this.trailIndex,u=this.fade.uniforms;
+      gl.bindFramebuffer(gl.FRAMEBUFFER,this.trailFbos[next]);
+      gl.bindVertexArray(this.emptyVao);gl.disable(gl.BLEND);gl.useProgram(this.fade.program);
+      this.bindTexture(this.trailTextures[this.trailIndex],0,u.uTrail);gl.uniform1f(u.uFade,this.trailScale);
+      gl.drawArrays(gl.TRIANGLES,0,3);this.trailIndex=next;this.trailScale=1;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER,this.trailFbos[this.trailIndex]);
+    gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+    gl.useProgram(this.trail.program);
+    gl.uniform1f(this.trail.uniforms.uWidth,.35*params.particleSize/Math.max(1,gl.canvas.clientWidth));
+    gl.uniform1f(this.trail.uniforms.uStampGain,.85*60*dt/this.trailScale);
     gl.bindVertexArray(this.segmentVaos[before]);gl.drawArraysInstanced(gl.TRIANGLES,0,6,this.count);
-    this.trailIndex=next;gl.disable(gl.BLEND);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    gl.disable(gl.BLEND);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
   render(canvas,params,active) {
     const gl=this.gl;gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);
     gl.enable(gl.BLEND);
     if(params.showTrails) {
-      gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);gl.bindVertexArray(this.emptyVao);
+      gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_COLOR);gl.bindVertexArray(this.emptyVao);
       gl.useProgram(this.composite.program);this.bindTexture(this.trailTextures[this.trailIndex],0,this.composite.uniforms.uTrail);
-      gl.uniform1f(this.composite.uniforms.uFade,1);gl.drawArrays(gl.TRIANGLES,0,3);
+      gl.uniform1f(this.composite.uniforms.uScale,this.trailScale);gl.drawArrays(gl.TRIANGLES,0,3);
     }
     gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
     if(params.showParticles) {

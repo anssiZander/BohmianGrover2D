@@ -35,6 +35,8 @@
         <div class="row"><label for="arrowGrid">Arrow grid</label><input id="arrowGrid" type="range" min="8" max="36" step="2" value="20"/><span id="arrowGridValue" class="val">20</span></div>
         <div class="row"><label for="currentGain">Arrow gain</label><input id="currentGain" type="range" min="0.25" max="10" step="0.25" value="2.5"/><span id="currentGainValue" class="val">2.5</span></div>
         <div class="row"><label for="particleSize">Dot size</label><input id="particleSize" type="range" min="1.5" max="8" step="0.5" value="3.5"/><span id="particleSizeValue" class="val">3.5</span></div>
+        <div class="row"><label for="trailHalfLife">Trail length</label><input id="trailHalfLife" type="range" min="0.1" max="12" step="0.1" value="1.5" aria-describedby="trailLengthHelp"/><span id="trailHalfLifeValue" class="val">1.5 s</span></div>
+        <p id="trailLengthHelp" class="note">Trail fading half-life, in gate time. Longer values keep more of each path. Pause holds the trails.</p>
         <div class="row"><label for="particleCount">Particles</label><input id="particleCount" type="range" min="1000" max="16000" step="1000" value="4000"/><span id="particleCountValue" class="val">4,000</span></div>
         <p class="note">Changing the particle count resets the search. Hidden particles keep moving.</p>
       </details>

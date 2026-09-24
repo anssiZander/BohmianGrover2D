@@ -7,7 +7,7 @@ const GRID = 512;
 const simulation = new SearchSimulation(15);
 const params = { speed: 1, visGain: .65, visGamma: .55, showPhase: true, showGrid: true,
   showCurrent: true, showParticles: true, showTrails: true, particleCount: 4000,
-  particleSize: 3.5, arrowGrid: 20, currentGain: 2.5 };
+  particleSize: 3.5, arrowGrid: 20, currentGain: 2.5, trailHalfLife: 1.5 };
 const byId = id => document.getElementById(id);
 const dom = Object.fromEntries(['c', 'waveArea', 'waveLabels', 'stage', 'waveHeader', 'waveFooter',
   'goalGrid', 'targetSummary', 'prepare', 'oracle', 'inverse', 'reference', 'forward', 'next', 'full',
@@ -17,6 +17,7 @@ const dom = Object.fromEntries(['c', 'waveArea', 'waveLabels', 'stage', 'waveHea
   'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry',
   'currentToggle', 'particlesToggle', 'trailsToggle', 'particleCount', 'particleCountValue',
   'particleSize', 'particleSizeValue', 'arrowGrid', 'arrowGridValue', 'currentGain', 'currentGainValue',
+  'trailHalfLife', 'trailHalfLifeValue',
   'particleProbability', 'flowStatus'].map(id => [id, byId(id)]));
 const geometry = createGroverGeometry(dom.groverGeometry);
 const canvas = dom.c;
@@ -173,6 +174,10 @@ function installEvents() {
       params[key] = Number(dom[key].value); dom[`${key}Value`].textContent = String(params[key]); renderDirty = true;
     });
   }
+  dom.trailHalfLife.addEventListener('input', () => {
+    params.trailHalfLife = Number(dom.trailHalfLife.value);
+    dom.trailHalfLifeValue.textContent = `${params.trailHalfLife.toFixed(1)} s`;
+  });
   dom.particleCount.addEventListener('change', () => setParticleCount(dom.particleCount.value));
   dom.minui.addEventListener('click', () => {
     dom.uibody.hidden = !dom.uibody.hidden; dom.minui.textContent = dom.uibody.hidden ? '+' : '−';
@@ -259,7 +264,7 @@ function advance(seconds) {
     while (simulation.active && remaining > 1e-12) {
       const gate = simulation.active, dt = Math.min(.02, remaining, gate.duration-gate.elapsed);
       if (dt <= 1e-12) break;
-      flow?.step(gate, simulation.target, Math.min(1,(gate.elapsed+dt)/gate.duration), dt, params.showTrails);
+      flow?.step(gate, simulation.target, Math.min(1,(gate.elapsed+dt)/gate.duration), dt, params);
       simulation.advance(dt); remaining -= dt;
     }
     markChanged();
