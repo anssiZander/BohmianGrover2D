@@ -1,3 +1,6 @@
+import { createGroverGeometry } from './grover-geometry.js';
+
+const geometry = createGroverGeometry(document.getElementById('groverGeometry'));
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: true, stencil: false });
 if (!gl) throw new Error('WebGL2 is required.');
@@ -578,6 +581,8 @@ function updateProgress(){let p=0;if(activeSegment){p=activeSegment.type==='free
 function syncCircuitDiagram(){
   const names=['Input |00⟩','Preparation A','Oracle O_w','Inverse mixer A† (−H)','Reference phase S₀₀','Forward mixer A'];
   const activeStage=Number(activeSegment?.circuitStage||0);
+  const geometryProgress=activeSegment?(activeSegment.type==='free'?activeSegment.elapsed/activeSegment.duration:activeSegment.frame/activeSegment.frames):1;
+  geometry.update({target:params.target,gate:activeStage||stageIndex,progress:geometryProgress,running:!!activeSegment,paused,parallel:viewMode==='multi'});
   const completedThrough=activeStage?activeStage-1:stageIndex;
   for(const gate of dom.circuitGates){
     const gateStage=Number(gate.dataset.circuitStage);

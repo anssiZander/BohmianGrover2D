@@ -41,9 +41,38 @@ The currently running gate pulses in blue, completed gates remain green with che
 
 ## Grover geometry
 
-The diagnostics panel also contains a collapsible **Grover geometry · two reflections** illustration, supplied with this project. It shows the oracle reflection and the diffuser reflection combining into a rotation toward the marked state. The angles are schematic; for this four-state search, one iteration reaches the marked logical state. The circuit's `D = A S₀₀ A†` differs from the illustrated reflection-about-`s` convention by an overall minus sign, with no effect on probabilities.
+The diagnostics panel contains **Grover geometry · live gate arrows**, an animated
+SVG diagram synchronized with the numerical operation's progress. It follows
+preparation, oracle, inverse mixing, reference reflection, and forward mixing,
+including individual buttons, queued runs, pause, reset, and target selection.
+In parallel view it shows the selected experiment.
 
-The original PNG is stored in `assets/grover-reflections.png`; an SVG viewport displays its diagram without the surrounding screenshot margin.
+The vertical axis is the marked state `|ω⟩`; the horizontal axis is the normalized
+equal sum `|s′⟩` of the other three states, in the phase convention described below.
+The cyan reference arrow is the prepared state `|s⟩`, at the actual four-state
+angle of 30 degrees. Yellow and violet arrows show the real and imaginary
+projections of the evolving state. Faint arrows retain the current gate's input;
+curves trace the moving tips. No endpoint interpolation or independent animation
+clock is used.
+
+A phase pulse passes through complex amplitudes, so a single real arrow cannot
+represent it. Likewise the bare mixer subgates can leave the usual Grover plane.
+**Outside this plane** reports the remaining probability in the other two logical
+directions; the projected arrows are not renormalized. Marked probability equals
+the sum of the squares of the two vertical arrow components.
+
+`grover-geometry.js` evaluates the exact four-mode gate evolution at the current
+gate fraction. The fixed logical rephasing is `i^(-popcount(q))`. The common
+box-energy phase is removed, and an additional overall phase equal to the
+reference-pulse angle selects the conventional diffuser sign. Explicitly, if
+`a_q` is the numerical wave's logical amplitude, the plotted amplitude is
+`b_q = i^(-popcount(q)) exp(i (E₁+E₂) t_signed / ℏ + i φ_reference) a_q`.
+Here `E₁,E₂` are the one-axis discrete sine energies. This makes preparation
+`R(πp/4) ⊗ R(πp/4)` and inverse mixing `R(-πp/4) ⊗ R(-πp/4)` in the diagram.
+The spatial wave retains its original phases and numerical evolution.
+
+The supplied PNG remains in `assets/grover-reflections.png` as a reference;
+the visible diagram is now drawn and animated entirely with SVG.
 
 ## Guidance overlay
 
@@ -81,6 +110,7 @@ Run the dependency-free static check with Node.js if desired:
 
 ```powershell
 node tests\static-check.mjs
+node tests\geometry-check.mjs
 ```
 
 Node is only used for verification; it is not needed to run the simulation. Browser and numerical observations are recorded in `VERIFICATION.md`.

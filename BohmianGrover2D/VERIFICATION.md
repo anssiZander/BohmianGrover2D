@@ -1,5 +1,36 @@
 # Verification — parallel inverse mixing
 
+## Live gate-arrow geometry — 2026-09-24
+
+Replaced the static picture with live SVG arrows derived from the four-mode
+unitary evolution at the active gate's actual progress. The spatial solvers,
+gate durations, and rendered wave/particle/trail styling are unchanged.
+
+`node tests/geometry-check.mjs` checked **660 intermediate states** across all
+four targets and all five gates against an independent discrete-sine-spectrum
+propagator. Maximum complex-amplitude difference was `7.268e-16`. Additional
+checks covered continuous gate boundaries, the exact 30-degree prepared state,
+the oracle's complex midpoint at constant 25% marked probability, probability
+outside the plane, and a vertical unit arrow at every marked endpoint.
+
+An external fixture ran **115/115 browser/GPU checks** using the production
+WebGL2 shaders on the NVIDIA GeForce RTX 4070 Ti SUPER (ANGLE / D3D11). It
+compared the displayed real/imaginary projections, marked probability, and
+outside probability with the actual numerical wave at the start, approximately
+25%, 50%, 75%, and end of each gate, for all four targets. Maximum discrepancy
+was `3.837e-7`. Pause held the arrows and progress exactly during every gate;
+checkpoints, reset, single-view target changes, and queued five-gate playback
+also passed. The numerical tests used 1,000 particles per grid and the usual
+128² wave grid with `dt = 0.00003`.
+
+The normal 12,000-particle-per-grid page was inspected during the oracle pulse:
+the real arrow, imaginary arrow, gate-input reference, traces, and fixed 25%
+marked probability were visible together. The diagram and circuit showed the
+same paused gate and percentage. A subsequent full run with the default 48,000
+total particles finished with all four target headers at `100.0%`, the live arrow
+at `(0, 1)`, and `0.0%` outside the plane. WebGL error code remained `0`, and both
+the normal page and test fixture had no console warnings or errors.
+
 ## Main-branch integration — 2026-09-24
 
 Merged `main` at `41a5fc0` into `Inverse-Mixing`, preserving its four independent

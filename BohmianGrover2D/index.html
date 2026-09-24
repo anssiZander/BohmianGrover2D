@@ -19,7 +19,7 @@
     .btnrow{display:flex;gap:8px;margin-top:9px}.btnrow button{flex:1}.status{margin-top:9px;font-size:12px;line-height:1.42;color:#b9cce5}.status b{color:#fff}
     #progressTrack{height:7px;border-radius:999px;background:rgba(90,130,180,.18);overflow:hidden;margin-top:8px}#progressBar{height:100%;width:0;background:linear-gradient(90deg,#3ec6ff,#d65cff)}
     .theory{font-size:13px;line-height:1.45;color:#c8d9ef}.theory p{margin:0 0 9px}.math{margin:7px 0 10px;padding:8px 10px;border:1px solid rgba(132,192,255,.18);border-radius:8px;background:rgba(8,23,51,.54);color:#eef7ff;font-family:"Cambria Math","Times New Roman",serif;font-size:15px;overflow:auto;white-space:nowrap}
-    .groverGeometry{margin:12px 0;border:1px solid rgba(132,192,255,.18);border-radius:8px;background:rgba(8,23,51,.42)}.groverGeometry summary{padding:9px 10px;color:#cce9ff;font-size:12px;font-weight:650;cursor:pointer}.groverGeometry figure{margin:0;padding:0 10px 10px}.groverGeometry svg{display:block;width:100%;max-width:320px;height:auto;margin:0 auto;border-radius:5px;overflow:hidden}.groverGeometry figcaption{margin-top:9px;color:#b9cce5;font-size:12px;line-height:1.45}.groverGeometry figcaption p{margin:0 0 6px}.groverGeometry figcaption p:last-child{margin-bottom:0}
+    .groverGeometry{margin:12px 0;border:1px solid rgba(132,192,255,.18);border-radius:8px;background:rgba(8,23,51,.42)}.groverGeometry summary{padding:9px 10px;color:#cce9ff;font-size:12px;font-weight:650;cursor:pointer}.groverGeometry figure{margin:0;padding:0 10px 10px}.groverGeometry svg{display:block;width:100%;height:auto;margin:3px auto;border-radius:5px;overflow:hidden;background:radial-gradient(ellipse at 48% 51%,rgba(48,70,113,.19),rgba(4,13,29,.45))}.groverGeometry figcaption{margin-top:9px;color:#b9cce5;font-size:12px;line-height:1.45}.groverGeometry figcaption p{margin:0 0 7px}.groverGeometry figcaption p:last-child{margin-bottom:0}.geometryMeta{display:flex;justify-content:space-between;gap:6px;color:#9fbce0;font-size:10px;min-height:15px}.geometryMeta b{color:#e8f6ff;font-weight:600}.geometryAxis{stroke:#7294ba;stroke-width:1.2}.geometryLabel{fill:#bdd5ef;font:15px "Cambria Math","Times New Roman",serif}.geometrySmall{fill:#819cb9;font:9px system-ui,sans-serif}.geometryLegend{display:flex;flex-wrap:wrap;gap:12px;font-size:10px;color:#bfd0e6}.geometryLegend span:before{content:'';display:inline-block;width:12px;height:2px;margin-right:4px;vertical-align:3px;background:var(--color)}.geometryMeasures{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;font-size:10px;color:#9fbce0}.geometryMeasures b{float:right;color:#e8f6ff;font-variant-numeric:tabular-nums}.geometryMeasures .bar{height:4px;margin-top:6px}.geometryMeasures .bar i{background:#ffd36b}.geometryMeasures .outside i{background:#78abc9}.groverGeometry .note{font-size:10px;line-height:1.45}
     #logical{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}.logicalCell{border:1px solid rgba(132,192,255,.16);border-radius:8px;padding:7px;background:rgba(8,23,51,.42)}.logicalTop{display:flex;justify-content:space-between;font-size:12px}.bar{height:7px;margin-top:5px;background:rgba(90,130,180,.17);border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#37c8ff,#e055ff);width:0}.phase{font-size:11px;color:#9fbce0;margin-top:4px}
     #multiGrids,#singleGrid,#singleTargetBar{position:absolute;pointer-events:none;display:none;z-index:2}.miniGrid{position:absolute;pointer-events:none}.gridSurface{position:absolute;left:0;bottom:0;pointer-events:none;border:1px solid rgba(139,200,255,.25);box-shadow:0 0 28px rgba(53,131,213,.1);text-shadow:0 1px 3px #000;font:700 13px system-ui;color:rgba(218,241,255,.78)}.gridSurface .quadrantLabel,#singleGrid .quadrantLabel{position:absolute}.q00{left:3%;bottom:3%}.q01{left:3%;top:3%}.q10{right:3%;bottom:3%}.q11{right:3%;top:3%}
     .miniGridHeader{position:absolute;left:0;right:0;top:0;height:40px;display:grid;grid-template-columns:minmax(82px,1fr) auto;align-items:center;gap:6px;padding:4px 5px;border:1px solid rgba(255,72,87,.52);border-radius:9px 9px 5px 5px;background:linear-gradient(90deg,rgba(87,12,24,.88),rgba(5,16,36,.88));backdrop-filter:blur(5px);box-shadow:0 7px 20px rgba(0,0,0,.34)}.miniGridHeader button,#singleTargetBar button{pointer-events:auto;min-width:0;padding:6px 8px;font-size:11px;font-weight:760;white-space:nowrap;border-color:rgba(255,92,105,.52);background:rgba(132,25,42,.3)}.miniGridHeader button.selected{background:rgba(132,25,42,.3)!important;border-color:rgba(255,92,105,.52)!important;box-shadow:none}.miniGridHeader button:hover:not(:disabled),#singleTargetBar button:hover:not(:disabled){background:rgba(187,38,55,.42);border-color:rgba(255,126,136,.78)}.targetLocation{min-width:55px;color:#ffb4b9;font-size:8px;font-weight:780;letter-spacing:.55px;text-align:right;white-space:nowrap}.miniOutcome.correct{color:#91ffd7}.miniGrid.selected-grid .gridSurface{border-color:rgba(255,91,105,.88);box-shadow:0 0 30px rgba(255,45,67,.22)}
@@ -110,17 +110,50 @@
   <div id="info" class="panel">
     <div class="head"><h3>Logical-state diagnostics</h3></div>
     <div id="logical"></div>
-    <details class="groverGeometry" open>
-      <summary>Grover geometry · two reflections</summary>
+    <details id="groverGeometry" class="groverGeometry" open>
+      <summary>Grover geometry · live gate arrows</summary>
       <figure>
-        <svg viewBox="327 31 521 513" role="img" aria-labelledby="groverGeometryTitle groverGeometryDescription">
-          <title id="groverGeometryTitle">Two reflections rotate the search state toward the marked answer</title>
-          <desc id="groverGeometryDescription">The marked state omega is the vertical axis and the unmarked component s-prime is the horizontal axis. The oracle reflects s across the horizontal axis; the diffuser reflects that result about s, rotating the state toward omega.</desc>
-          <image href="./assets/grover-reflections.png" width="848" height="544" />
+        <div class="geometryMeta"><span data-geometry="target">Selected |11⟩</span><b data-geometry="status">Input |00⟩</b></div>
+        <svg viewBox="0 0 360 295" role="img" aria-labelledby="groverGeometryTitle groverGeometryDescription">
+          <title id="groverGeometryTitle">Live state arrows in the marked and unmarked plane</title>
+          <desc id="groverGeometryDescription" data-geometry="liveDescription">Yellow and violet arrows show the real and imaginary projections of the current state. They follow the active gate and stop with the simulation.</desc>
+          <defs>
+            <marker id="geoAxis" viewBox="0 0 8 8" markerWidth="6" markerHeight="6" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L8 4L0 8Z" fill="#7294ba"/></marker>
+            <marker id="geoReal" viewBox="0 0 11 8" markerWidth="11" markerHeight="8" refX="10" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L11 4L0 8L2 4Z" fill="#ffd36b"/></marker>
+            <marker id="geoImaginary" viewBox="0 0 11 8" markerWidth="11" markerHeight="8" refX="10" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L11 4L0 8L2 4Z" fill="#d78bff"/></marker>
+            <marker id="geoReference" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L8 4L0 8Z" fill="#67ccf0"/></marker>
+            <marker id="geoStart" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L8 4L0 8Z" fill="#a6b9d2"/></marker>
+          </defs>
+          <circle cx="170" cy="154" r="110" fill="none" stroke="#6893bd" stroke-opacity=".2" stroke-dasharray="3 5"/>
+          <path class="geometryAxis" d="M35 154H315" fill="none" marker-end="url(#geoAxis)"/>
+          <path class="geometryAxis" d="M170 282V23" fill="none" marker-end="url(#geoAxis)"/>
+          <text class="geometryLabel" x="181" y="29">|ω⟩</text><text class="geometrySmall" x="184" y="42">marked</text>
+          <text class="geometryLabel" x="304" y="174">|s′⟩</text><text class="geometrySmall" x="289" y="187">unmarked</text>
+          <text class="geometrySmall" x="157" y="167">0</text><text class="geometrySmall" x="54" y="167">−1</text><text class="geometrySmall" x="278" y="167">1</text>
+          <path d="M170 154L265.263 99" stroke="#67ccf0" stroke-width="1.4" stroke-dasharray="5 4" opacity=".65" marker-end="url(#geoReference)"/>
+          <text class="geometryLabel" x="275" y="98" style="fill:#67ccf0">|s⟩</text>
+          <path d="M203 154A33 33 0 0 0 198.579 137.5" fill="none" stroke="#67ccf0" stroke-opacity=".4"/>
+          <text class="geometrySmall" x="207" y="146">30°</text>
+          <path data-geometry="realTrace" fill="none" stroke="#ffd36b" stroke-width="1.6" stroke-opacity=".4"/>
+          <path data-geometry="imaginaryTrace" fill="none" stroke="#d78bff" stroke-width="1.6" stroke-opacity=".4"/>
+          <g fill="none" stroke="#a6b9d2" stroke-width="1.2" stroke-dasharray="3 4" opacity=".4" marker-end="url(#geoStart)">
+            <path data-geometry="startReal"/><path data-geometry="startImaginary"/>
+          </g>
+          <path data-geometry="imaginary" fill="none" stroke="#d78bff" stroke-width="2.8" marker-end="url(#geoImaginary)"/>
+          <path data-geometry="real" fill="none" stroke="#ffd36b" stroke-width="3.2" marker-end="url(#geoReal)"/>
+          <circle data-geometry="imaginaryDot" r="2.2" fill="#eccaff"/>
+          <circle data-geometry="realDot" r="2.5" fill="#fff1b0"/>
+          <circle cx="170" cy="154" r="2.5" fill="#d6e7fa"/>
+          <text class="geometrySmall" x="12" y="285">Faint arrow: gate input · curve: tip's path</text>
         </svg>
+        <div class="geometryLegend"><span style="--color:#ffd36b">Real part</span><span style="--color:#d78bff">Imaginary part</span><span style="--color:#67ccf0">Prepared |s⟩</span></div>
+        <div class="geometryMeasures">
+          <div>Marked <b data-geometry="markedValue">0.0%</b><div class="bar"><i data-geometry="markedBar"></i></div></div>
+          <div>Outside this plane <b data-geometry="outsideValue">0.0%</b><div class="bar outside"><i data-geometry="outsideBar"></i></div></div>
+        </div>
         <figcaption>
-          <p>The oracle U<sub>ω</sub> reflects |s⟩ across the unmarked axis |s′⟩. The diffuser U<sub>s</sub> reflects it about |s⟩. Together, they rotate the state toward the marked answer |ω⟩.</p>
-          <p class="note">Angles are schematic. For four equally likely states, one Grover iteration reaches the marked state. The circuit's diffuser gives the same result up to an overall phase.</p>
+          <p data-geometry="description">Start in |00⟩. Preparation will create the balanced search state |s⟩.</p>
+          <p class="note">Real and imaginary parts are shown separately, in a phase convention where |s⟩ is real. “Outside” measures probability in the other two logical directions.</p>
         </figcaption>
       </figure>
     </details>
