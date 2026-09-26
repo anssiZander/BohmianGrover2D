@@ -3,9 +3,10 @@
 uniform sampler2D uCorrectionA;
 uniform sampler2D uCorrectionB;
 uniform int uFree;
-uniform vec4 uFreeCoefficients[16];
-uniform vec4 uFixed[16];
-uniform vec4 uRotating[16];
+uniform int uSide;
+uniform vec4 uFreeCoefficients[25];
+uniform vec4 uFixed[25];
+uniform vec4 uRotating[25];
 uniform float uFreeSpan;
 uniform float uSpinAngle;
 uniform float uDuration;
@@ -23,13 +24,18 @@ vec4 complexPhase(vec4 a,float c,float s) {
 vec4 spinRotate(vec4 a,float c,float s) {return vec4(c*a.xy-s*a.zw,s*a.xy+c*a.zw);}
 void spinorAt(vec2 uv,float progress,out vec4 psi,out vec4 gx,out vec4 gy) {
   const float PI=3.141592653589793;
-  vec4 n=vec4(1,2,3,4),sx=sin(PI*uv.x*n),sy=sin(PI*uv.y*n);
-  vec4 dx=PI*n*cos(PI*uv.x*n),dy=PI*n*cos(PI*uv.y*n);
-  vec4 co=cos(uFreeSpan*progress*n*n),si=sin(uFreeSpan*progress*n*n);
+  float sx[5],sy[5],dx[5],dy[5],co[5],si[5];
+  for(int i=0;i<5;i++){
+    float n=float(i+1);
+    sx[i]=sin(PI*uv.x*n);sy[i]=sin(PI*uv.y*n);
+    dx[i]=PI*n*cos(PI*uv.x*n);dy[i]=PI*n*cos(PI*uv.y*n);
+    co[i]=cos(uFreeSpan*progress*n*n);si[i]=sin(uFreeSpan*progress*n*n);
+  }
   float c=cos(PI*progress),s=sin(PI*progress);
   psi=vec4(0);gx=vec4(0);gy=vec4(0);
-  for(int x=0;x<4;x++)for(int y=0;y<4;y++) {
-    int q=4*x+y;
+  for(int x=0;x<5;x++)for(int y=0;y<5;y++) {
+    if(x>=uSide||y>=uSide)continue;
+    int q=uSide*x+y;
     vec4 a;
     if(uFree==1)a=complexPhase(uFreeCoefficients[q],co[x]*co[y]-si[x]*si[y],si[x]*co[y]+co[x]*si[y]);
     else a=uFixed[q]+complexPhase(uRotating[q],c,s);

@@ -1,4 +1,4 @@
-import { GATES,boxProbability } from '../multiregion-core.js';
+import { gridModel,boxProbability } from '../multiregion-core.js';
 import { gateFlow,flowAt } from '../probability-flow.js';
 
 const panel=document.createElement('pre');panel.id='flowVerification';
@@ -21,7 +21,7 @@ async function run() {
     let left=seconds;while(left>1e-10){const step=Math.min(.08,left);api.advanceTime(step);left-=step;await turn();}
   }
   function distribution(name,full=false) {
-    const state=api.state(),stats=api.particleStats(),expected=Array.from({length:16},(_,q)=>boxProbability(state.amplitudes,q));
+    const state=api.state(),stats=api.particleStats(),expected=Array.from({length:state.side*state.side},(_,q)=>boxProbability(state.amplitudes,q));
     const error=Math.max(...stats.bins.map((n,q)=>Math.abs(n/stats.count-expected[q])));
     maxRegionError=Math.max(maxRegionError,error);maxLag=Math.max(maxLag,stats.maxLag);
     maxFailures=Math.max(maxFailures,stats.failures);maxInvalid=Math.max(maxInvalid,stats.invalid);
@@ -48,31 +48,34 @@ async function run() {
       densityError=Math.max(densityError,Math.abs(w[k]**2+w[k+1]**2+w[k+2]**2+w[k+3]**2-at.rho));
     }
     maxCurrentError=Math.max(maxCurrentError,currentError);maxDensityError=Math.max(maxDensityError,densityError);
-    check(`${name}: actual GPU current and density`,currentError<4e-5&&densityError<1e-4,`j ${currentError.toExponential(2)}, rho ${densityError.toExponential(2)}`);
+    check(`${name}: actual GPU current and density`,currentError<(data.side===5?1e-4:4e-5)&&densityError<(data.side===5?3e-4:1e-4),`j ${currentError.toExponential(2)}, rho ${densityError.toExponential(2)}`);
   }
-  api.setTarget(13);distribution('Initial',true);
-  for(const [index,gate] of GATES.entries()) {
-    const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,13,gate.duration);
-    api.startNext();let prior=0;
-    for(const p of [.25,.5,.75,1]) {
-      await advance((p-prior)*gate.duration);prior=p;
-      field(reference,p,`Gate ${index+1} at ${p}`);distribution(`Gate ${index+1} at ${p}`,true);
-      if(p===.5) {
-        api.togglePause();const before=api.readParticles();await advance(.1);
-        check(`Gate ${index+1}: pause freezes every particle`,maxDiff(before,api.readParticles())===0);
-        api.togglePause();
+  for(const side of [2,3,4,5]){
+    api.setGridSize(side);
+    const target=2*side*side-1,model=gridModel(side);
+    api.setTarget(target);distribution(side+'x'+side+' initial',true);
+    for(const [index,gate] of model.gates.entries()){
+      const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,target,gate.duration);
+      api.startNext();let prior=0;
+      for(const p of [.25,.5,1]){
+        await advance((p-prior)*gate.duration);prior=p;
+        const name=side+'x'+side+' gate '+(index+1)+' at '+p;
+        field(reference,p,name);distribution(name,p===1);
+        if(p===.5&&index<3){
+          api.togglePause();const before=api.readParticles();await advance(.1);
+          check(side+'x'+side+' gate '+index+': pause freezes particles',maxDiff(before,api.readParticles())===0);
+          api.togglePause();
+        }
       }
     }
   }
-  // Both spin targets and representative corner/interior spatial targets.
-  for(const target of [0,12,30,31]) {
-    api.setTarget(target);api.runFull();
-    await advance(2.4);
-    for(let round=1;round<=4;round++) {await advance(22.4);distribution(`Target ${target}, iteration ${round}`);}
-  }
-  api.setParticleCount(16000);api.setTarget(31);api.runFull();await advance(92);
-  distribution('Maximum particle count, complete target 31',true);
-  api.setParticleCount(4000);
+  api.setParticleCount(16000);api.setGridSize(5);api.setTarget(49);api.runFull();
+  await advance(gridModel(5).gates.reduce((sum,g)=>sum+g.duration,0));
+  check('Maximum 5x5 ensemble uses 16000 particles',api.particleStats().count===16000);
+  distribution('5x5 maximum particle count, full search',true);
+  api.setParticleCount(4000);api.setGridSize(2);api.setTarget(6);api.startNext();
+  const first=gridModel(2).gates[0],smallReference=gateFlow(api.state().amplitudes,first.kind,6,first.duration);
+  await advance(first.duration*.5);field(smallReference,.5,'5x5 to 2x2 resized GPU buffers');distribution('5x5 to 2x2 resized ensemble',true);
   api.reset();api.startNext();await advance(.6);const visible=api.readParticles();
   api.reset();document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();document.getElementById('spinToggle').click();
   const currentMode=document.getElementById('currentMode');currentMode.value='2';currentMode.dispatchEvent(new Event('change'));

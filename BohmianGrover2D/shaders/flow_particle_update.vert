@@ -18,7 +18,9 @@ void main() {
   float failures=aState.w,h=.002;
   // Embedded Bogacki-Shampine 3(2), independently adaptive for each particle.
   // There is no velocity cap, respawn, attraction, or density resampling.
-  for(int step=0;step<384;step++) {
+  // Rare passages near spinor nodes need more accepted/rejected substeps.
+  // Ordinary particles exit early as soon as they reach the shared clock.
+  for(int step=0;step<2048;step++) {
     if(z.z>=uEnd-2e-8) {z.z=uEnd;break;}
     vec3 k1=tangent(z);
     // The auxiliary clock may need very large steps near a node. Bound actual

@@ -5,7 +5,7 @@ precision highp sampler2D;
 uniform sampler2D uWave;
 uniform float uVisGain;
 uniform float uVisGamma;
-uniform int uShowPhase;
+uniform int uSide;
 uniform int uShowGrid;
 uniform int uTarget;
 uniform int uWaveView;
@@ -24,13 +24,11 @@ vec3 phasePalette(float phase, float intensity) {
   float structure = smoothstep(.015, .20, intensity);
   return hsv2rgb(vec3(hue, mix(.28, .94, structure), .075 + .925 * intensity));
 }
-vec3 densityPalette(float t) {
-  return vec3(.22,.32,.28) + vec3(.40,.45,.35) * cos(6.283185 * (t + vec3(.15,.55,.75)));
-}
-vec2 regionCenter(int q) { return (vec2(float(q / 4), float(q % 4)) + .5) / 4.0; }
+vec2 regionCenter(int q) { return (vec2(float(q / uSide), float(q % uSide)) + .5) / float(uSide); }
 float regionMask(vec2 uv, int q) {
   vec2 distance = abs(uv - regionCenter(q));
-  return (1.0 - smoothstep(.123, .127, distance.x)) * (1.0 - smoothstep(.123, .127, distance.y));
+  float halfCell=.5/float(uSide);
+  return (1.0 - smoothstep(halfCell-.002, halfCell+.002, distance.x)) * (1.0 - smoothstep(halfCell-.002, halfCell+.002, distance.y));
 }
 
 void main() {
@@ -49,20 +47,21 @@ void main() {
     tint=mix(vec3(.42,.25,.82),tint,abs(spinZ));
     col=vec3(.008,.015,.035)+intensity*tint;
     col+=.18*pow(intensity,5.0)*vec3(.8,.95,1.0);
-  }else col=uShowPhase==1?phasePalette(phase,intensity):densityPalette(intensity)*intensity;
+  }else col=phasePalette(phase,intensity);
 
   float wall = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
   float rim = 1.0 - smoothstep(uPixelSize, 3.0 * uPixelSize, wall);
   col = mix(col, vec3(.35,.94,1.0), .82 * rim);
   col += vec3(.05,.38,.88) * exp(-wall * 96.0) * .30;
   if (uShowGrid == 1) {
-    vec2 nearest = abs(uv * 4.0 - floor(uv * 4.0 + .5)) / 4.0;
+    vec2 nearest = abs(uv * float(uSide) - floor(uv * float(uSide) + .5)) / float(uSide);
     float lines = 1.0 - smoothstep(.6 * uPixelSize, 1.7 * uPixelSize, min(nearest.x, nearest.y));
     col = mix(col, vec3(.18,.55,.72), .45 * lines);
   }
   vec2 d = abs(uv - regionCenter(uTarget));
-  float edge = min(abs(d.x - .123), abs(d.y - .123));
-  float within = step(d.x, .125) * step(d.y, .125);
+  float halfCell=.5/float(uSide),inset=halfCell-2.0*uPixelSize;
+  float edge = min(abs(d.x - inset), abs(d.y - inset));
+  float within = step(d.x, halfCell) * step(d.y, halfCell);
   float glow = within * (1.0 - smoothstep(.004, .025, edge));
   float border = within * (1.0 - smoothstep(.7 * uPixelSize, 2.2 * uPixelSize, edge));
   col = mix(col, col * vec3(1.06,.76,.80) + vec3(.13,.005,.012), .20 * regionMask(uv, uTarget));

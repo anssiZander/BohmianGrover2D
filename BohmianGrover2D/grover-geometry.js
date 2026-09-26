@@ -1,15 +1,15 @@
-import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js';
+import { modelOfState, expectedProbability, evolveGate, projectGroverState } from './multiregion-core.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
-const gateNames = { input: 'Input |0000,↑⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
-const descriptions = {
-  input: 'Start in the lower-left logical packet |0000,↑⟩. Preparation will spread its amplitude over all 32 joint states.',
-  prepare: 'Free evolution and a spin rotation create equal probabilities with definite relative phases in all 32 joint states. The cyan point marks this prepared state |s⟩.',
+const gateNames = { input: 'Input |0,0,↑⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
+function descriptions(model) {return {
+  input: 'Start in the lower-left logical packet |0,0,↑⟩. Preparation will spread its amplitude over all '+model.stateCount+' joint states.',
+  prepare: 'Free evolution and a spin rotation create equal probabilities with definite relative phases in all '+model.stateCount+' joint states. The cyan point marks this prepared state |s⟩.',
   oracle: 'The oracle turns the marked amplitude through π. All logical probabilities stay fixed during this phase gate.',
-  inverse: 'A† combines forward free motion for 7T with the inverse spin rotation. The projection follows the full intervening evolution.',
-  reference: 'A π phase pulse on |0000,↑⟩ is the central operation of the diffuser.',
+  inverse: 'A† combines forward free motion for '+model.inverseFactor+'T with the inverse spin rotation. The projection follows the full intervening evolution.',
+  reference: 'A π phase pulse on |0,0,↑⟩ is the central operation of the diffuser.',
   forward: 'The forward mixer completes this Grover iteration. Interference increases the marked amplitude.',
-};
+};}
 
 export function createGroverGeometry(root) {
   const get = name => root.querySelector(`[data-geometry="${name}"]`);
@@ -73,7 +73,8 @@ export function createGroverGeometry(root) {
   function draw() {
     if (!frame || root.hidden) return;
     camera();
-    const viewKey = `${yaw}/${pitch}`;
+    const {stateCount:STATE_COUNT,side}=frame.model;
+    const viewKey = side+'/'+yaw+'/'+pitch;
     if (viewKey !== gridKey) {
       gridKey = viewKey;
       const circles = [];
@@ -105,7 +106,7 @@ export function createGroverGeometry(root) {
     const nextCurveKey = stepKey;
     if (nextCurveKey !== curveKey) {
       curveKey = nextCurveKey;
-      const count = kind === 'inverse' ? 896 : 128;
+      const count = kind === 'inverse' ? 128*frame.model.inverseFactor : 128;
       samples = Array.from({ length: count+1 }, (_, i) => projectGroverState(kind === 'input' ? startAmplitudes : evolveGate(startAmplitudes, kind, i / count, target), target).bloch.vector);
     }
     const prefix = samples.slice(0, Math.floor(progress * (samples.length-1)) + 1);
@@ -155,14 +156,15 @@ export function createGroverGeometry(root) {
       const key = `${stepKey}/${progress}/${running}/${paused}`;
       if (key === lastKey) return;
       lastKey = key;
+      const model=modelOfState(amplitudes),{labels:LABELS,iterations:ITERATIONS}=model;
       const state = projectGroverState(amplitudes, target);
-      frame = { target, kind, progress, state, startAmplitudes, stepKey };
+      frame = { model, target, kind, progress, state, startAmplitudes, stepKey };
       draw();
       nodes.target.textContent = `Target |${LABELS[target]}⟩`;
       const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
       nodes.status.textContent = complete ? 'Search complete' : `${round}${gateNames[kind]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : kind !== 'input' ? ' · held' : ''}`;
       nodes.description.textContent = !state.bloch.vector ? 'The projection has zero weight, so its direction is undefined.'
-        : complete ? 'Four Grover iterations reach 99.918% in the marked position–spin state. This effective sphere describes the search, not the physical spin.' : descriptions[kind];
+        : complete ? ITERATIONS+' Grover iterations reach '+(100*expectedProbability(ITERATIONS,model.side)).toFixed(3)+'% in the marked position–spin state. This sphere represents the search subspace.' : descriptions(model)[kind];
       nodes.markedValue.textContent = percent(state.targetProbability);
       nodes.weightValue.textContent = percent(state.bloch.weight);
       nodes.outsideValue.textContent = percent(state.outsideProbability);

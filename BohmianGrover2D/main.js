@@ -1,18 +1,18 @@
-import { STATE_COUNT, SPATIAL_COUNT, SPATIAL_LABELS, MIX_TIME, spinSummary, ITERATIONS, LABELS, GATES, SearchSimulation, probabilities,
-  sineCoefficients, boxProbability } from './multiregion-core.js';
+import { SearchSimulation, probabilities, sineCoefficients, boxProbability, expectedProbability, spinSummary } from './multiregion-core.js';
 import { createGroverGeometry } from './grover-geometry.js';
 import { FlowRenderer } from './flow-renderer.js';
 
 const GRID = 512;
 const simulation = new SearchSimulation(30);
-const params = { speed: 1, visGain: .65, visGamma: .55, showPhase: true, showGrid: true,
+const params = { speed: 1, visGain: .65, visGamma: .55, showGrid: true,
   showCurrent: true, showParticles: true, showTrails: true, particleCount: 4000,
   particleSize: 3.5, arrowGrid: 20, currentGain: 2.5, trailHalfLife: 1.5, waveView: 0, currentMode: 0, showSpin: true };
 const byId = id => document.getElementById(id);
 const dom = Object.fromEntries(['c', 'waveArea', 'waveLabels', 'stage', 'waveHeader', 'waveFooter',
-  'goalGrid', 'targetSummary', 'prepare', 'oracle', 'inverse', 'reference', 'forward', 'next', 'full',
+  'goalGrid', 'targetSummary', 'next', 'full', 'gridSize', 'gridSizeValue', 'gridSummary', 'appTitle', 'stateCountLabel',
+  'circuitXLabel', 'circuitYLabel', 'inverseCaption', 'circuitDescription', 'circuitTitle',
   'reset', 'pause', 'progressBar', 'stageStatus', 'speed', 'speedValue', 'brightness', 'brightnessValue',
-  'phaseToggle', 'gridToggle', 'ui', 'uibody', 'minui', 'circuitPanel', 'circuitToggle', 'circuitStatus',
+  'gridToggle', 'ui', 'uibody', 'minui', 'circuitPanel', 'circuitToggle', 'circuitStatus',
   'circuitTarget', 'circuitReadout', 'iterationTrack', 'modeProbability', 'boxProbability', 'normValue',
   'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry',
   'currentToggle', 'particlesToggle', 'trailsToggle', 'particleCount', 'particleCountValue',
@@ -26,15 +26,32 @@ let gl, waveTexture, waveFbo, vao, reconstruction, renderer, flow, ready = false
 let waveDirty = true, renderDirty = true, frameRecordingActive = false, lastTime = null, glError = 0;
 let lastUiKey = '', previousBusy = null, cachedBoxProbability = 0;
 const targetButtons = [], waveCells = [];
-const gateButtons = ['prepare', 'oracle', 'inverse', 'reference', 'forward'];
 const circuitGates = Array.from(document.querySelectorAll('[data-circuit-kind]'));
 
 function formatProbability(p) { return `${(100 * Math.max(0, Math.min(1, p))).toFixed(1)}%`; }
 function markChanged() { waveDirty = true; renderDirty = true; lastUiKey = ''; }
 
 function makeTargetGrid() {
-  for (let y = 3; y >= 0; y--) for (let x = 0; x < 4; x++) {
-    const q = 4 * x + y, button = document.createElement('button');
+  const {side,spatialLabels:SPATIAL_LABELS,stateCount,iterations,inverseFactor}=simulation.model;
+  targetButtons.length=0;waveCells.length=0;
+  dom.goalGrid.replaceChildren();dom.waveLabels.replaceChildren();
+  document.documentElement.style.setProperty('--grid-side',side);
+  dom.gridSize.value=side;dom.gridSizeValue.textContent=side+'×'+side;
+  dom.gridSize.setAttribute('aria-valuetext',side+' by '+side+', '+stateCount+' position-spin states');
+  dom.gridSummary.textContent=(side*side)+' positions × 2 spin states = '+stateCount+' states. Changing size resets the search.';
+  dom.appTitle.textContent='Grover '+side+'×'+side+' × spin';
+  document.title='Grover with Spin — '+side+'×'+side+' · '+stateCount+' States';
+  dom.stateCountLabel.textContent=(side*side)+' SPATIAL MODES × SPIN ½ · '+stateCount+' STATES';
+  canvas.setAttribute('aria-label','Two-component spinor wave: '+(side*side)+' spatial regions, each with spin up and down');
+  dom.circuitXLabel.textContent='x ('+side+')';dom.circuitYLabel.textContent='y ('+side+')';
+  dom.inverseCaption.textContent='WAIT '+inverseFactor+'T';
+  dom.circuitTitle.textContent='Grover circuit: two '+side+'-level position registers and spin';
+  dom.circuitPanel.setAttribute('aria-label',dom.circuitTitle.textContent);
+  dom.circuitDescription.textContent='Preparation runs once. Oracle, inverse mixer, reference phase, and forward mixer repeat '+iterations+' times.';
+  dom.full.title='Prepare and run '+iterations+' Grover iterations';
+  dom.iterationTrack.innerHTML=Array.from({length:iterations},(_,i)=>'<span data-iteration="'+(i+1)+'">Iteration '+(i+1)+'<b>—</b></span>').join('');
+  for (let y = side-1; y >= 0; y--) for (let x = 0; x < side; x++) {
+    const q = side * x + y, button = document.createElement('button');
     button.type = 'button'; button.dataset.target = q;
     button.setAttribute('aria-label', `Mark |${SPATIAL_LABELS[q]}⟩, column ${x + 1}, row ${y + 1} from bottom`);
     button.innerHTML = `<span>|${SPATIAL_LABELS[q]}⟩</span><b class="spinUp">↑ 0.0%</b><b class="spinDown">↓ 0.0%</b><i></i>`;
@@ -51,16 +68,21 @@ function chooseCell(region) {
   return chooseTarget(2 * region + spin);
 }
 function displayGate() {
-  return simulation.active || simulation.last || { kind: 'prepare', duration: MIX_TIME, progress: 0, startAmplitudes: simulation.amplitudes };
+  return simulation.active || simulation.last || { kind: 'prepare', duration: simulation.model.mixTime, progress: 0, startAmplitudes: simulation.amplitudes };
+}
+function setGridSize(value) {
+  if(!simulation.setGridSize(Number(value)))return false;
+  flow?.reset(params.particleCount,simulation.model.side);
+  makeTargetGrid();markChanged();syncUi();layout();return true;
 }
 function chooseTarget(q) {
   if (!simulation.setTarget(q)) return false;
-  flow?.reset(params.particleCount);
+  flow?.reset(params.particleCount,simulation.model.side);
   markChanged(); syncUi(); return true;
 }
-function reset() { simulation.reset(); flow?.reset(params.particleCount); markChanged(); syncUi(); }
+function reset() { simulation.reset(); flow?.reset(params.particleCount,simulation.model.side); markChanged(); syncUi(); }
 function startNext() { if (simulation.startNext()) { markChanged(); syncUi(); return true; } return false; }
-function runFull() { if (simulation.runFull()) { flow?.reset(params.particleCount); markChanged(); syncUi(); return true; } return false; }
+function runFull() { if (simulation.runFull()) { flow?.reset(params.particleCount,simulation.model.side); markChanged(); syncUi(); return true; } return false; }
 function togglePause() { simulation.paused = !simulation.paused; lastUiKey = ''; syncUi(); }
 function setParticleCount(value) {
   if (simulation.active) return false;
@@ -70,6 +92,7 @@ function setParticleCount(value) {
 }
 
 function syncUi() {
+  const {side,spatialCount:SPATIAL_COUNT,spatialLabels:SPATIAL_LABELS,labels:LABELS,gates:GATES,iterations:ITERATIONS,stateCount,inverseFactor}=simulation.model;
   const gate = simulation.active || simulation.last;
   const kind = gate?.kind || 'input', progress = simulation.active?.progress ?? (simulation.last ? 1 : 0);
   const iteration = gate?.iteration || 0, busy = !!simulation.active, complete = simulation.completed === GATES.length;
@@ -100,24 +123,22 @@ function syncUi() {
   dom.spinDownProbability.textContent=formatProbability(spin.down);
   dom.spinPurity.textContent=spin.purity.toFixed(3);
   const targetText = `|${LABELS[target]}⟩`;
-  dom.targetSummary.textContent = `Goal ${targetText} · column ${(target >> 3) + 1}, row ${((target >> 1) & 3) + 1} from bottom`;
+  dom.targetSummary.textContent = `Goal ${targetText} · column ${Math.floor((target >> 1)/side) + 1}, row ${((target >> 1)%side) + 1} from bottom`;
   dom.waveTarget.textContent = `MARKED ${targetText}`;
   dom.waveProbability.textContent = formatProbability(p[target]);
   dom.modeProbability.textContent = formatProbability(p[target]);
   dom.boxProbability.textContent = formatProbability(cachedBoxProbability);
   dom.normValue.textContent = p.reduce((sum, value) => sum + value, 0).toFixed(6);
-  const nextKind = GATES[simulation.completed]?.kind;
-  for (const id of gateButtons) dom[id].disabled = busy || nextKind !== id;
+  dom.next.title=GATES[simulation.completed]?.name||'Search complete';
   dom.next.disabled = busy || complete;
   dom.full.disabled = busy;
   dom.pause.textContent = simulation.paused ? 'Resume' : 'Pause';
   dom.particleCount.disabled = busy;
-  dom.oracle.textContent = `Oracle · ${targetText}`;
   dom.progressBar.style.width = `${100 * progress}%`;
   const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
-  const status = complete ? 'Complete · 4 Grover iterations' : busy
+  const status = complete ? 'Complete · '+ITERATIONS+' Grover iterations' : busy
     ? `${simulation.paused ? 'Paused' : 'Running'} · ${round}${gate.name} · ${Math.round(100 * progress)}%`
-    : gate ? `${round}${gate.name} complete` : 'Ready · input |0000,↑⟩';
+    : gate ? `${round}${gate.name} complete` : 'Ready · input |0,0,↑⟩';
   dom.stageStatus.textContent = status;
   dom.circuitStatus.textContent = status;
   dom.circuitTarget.textContent = `w = ${targetText}`;
@@ -142,13 +163,13 @@ function syncUi() {
   }
   const descriptions = {
     input: 'Begin in one localized mode. Prepare the balanced state to start the search.',
-    prepare: 'Free evolution and a spin rotation prepare 32 joint states, each with probability 3.125%.',
+    prepare: 'Free evolution and a spin rotation prepare '+stateCount+' joint states, each with probability '+(100/stateCount).toFixed(3)+'%.',
     oracle: 'Only the marked position–spin state changes phase. Its probability stays fixed while its contribution interferes differently in space.',
-    inverse: 'Free motion continues forward for 7T while the spin rotation is undone. Together they implement A†.',
-    reference: 'Only the |0000,↑⟩ coefficient turns through π while every other logical coefficient stays fixed.',
+    inverse: 'Free motion continues forward for '+inverseFactor+'T while the spin rotation is undone. Together they implement A†.',
+    reference: 'Only the |0,0,↑⟩ coefficient turns through π while every other logical coefficient stays fixed.',
     forward: 'Free evolution plus the forward spin rotation completes the reflection. Unmarked contributions cancel and the marked mode grows.',
   };
-  dom.gateDescription.textContent = complete ? '99.918% in the marked position–spin state after four iterations.' : descriptions[kind];
+  dom.gateDescription.textContent = complete ? (100*expectedProbability(ITERATIONS,side)).toFixed(3)+'% in the marked position–spin state after '+ITERATIONS+' iterations.' : descriptions[kind];
   const stepKey = `${simulation.revision}/${target}/${gate?.index ?? -1}`;
   geometry.update({ target, kind, progress, running: busy, paused: simulation.paused, iteration, complete,
     amplitudes: simulation.amplitudes, startAmplitudes: gate?.startAmplitudes || simulation.amplitudes, stepKey });
@@ -168,15 +189,11 @@ function syncUi() {
 }
 
 function installEvents() {
-  gateButtons.forEach(id => dom[id].addEventListener('click', startNext));
+  dom.gridSize.addEventListener('input',()=>setGridSize(dom.gridSize.value));
   dom.next.addEventListener('click', startNext); dom.full.addEventListener('click', runFull);
   dom.reset.addEventListener('click', reset); dom.pause.addEventListener('click', togglePause);
   dom.speed.addEventListener('input', () => { params.speed = Number(dom.speed.value); dom.speedValue.textContent = `${params.speed.toFixed(2)}×`; });
   dom.brightness.addEventListener('input', () => { params.visGain = Number(dom.brightness.value); dom.brightnessValue.textContent = params.visGain.toFixed(2); renderDirty = true; });
-  dom.phaseToggle.addEventListener('click', () => {
-    params.showPhase = !params.showPhase; dom.phaseToggle.textContent = params.showPhase ? 'ON' : 'OFF';
-    dom.phaseToggle.setAttribute('aria-pressed', String(params.showPhase)); renderDirty = true;
-  });
   dom.gridToggle.addEventListener('click', () => {
     params.showGrid = !params.showGrid; dom.gridToggle.textContent = params.showGrid ? 'ON' : 'OFF';
     dom.gridToggle.setAttribute('aria-pressed', String(params.showGrid));
@@ -199,7 +216,7 @@ function installEvents() {
     dom.trailHalfLifeValue.textContent = `${params.trailHalfLife.toFixed(1)} s`;
   });
   dom.waveView.addEventListener('change', () => {
-    params.waveView=Number(dom.waveView.value);dom.phaseToggle.disabled=params.waveView===0;
+    params.waveView=Number(dom.waveView.value);
     dom.phaseLegendPanel.hidden=params.waveView===0;
     dom.waveLegend.textContent=params.waveView===0 ? 'Color = local spin: cyan ↑ · magenta ↓ · violet balanced. Gold dots follow the total current.' : 'Component hue = phase. Gold dots always sample total density and follow the full spinor current.';
     renderDirty=true;
@@ -215,10 +232,10 @@ function installEvents() {
     dom.circuitToggle.textContent = collapsed ? '+' : '−'; dom.circuitToggle.setAttribute('aria-expanded', String(!collapsed));
   });
   canvas.addEventListener('click', event => {
-    const bounds = canvas.getBoundingClientRect();
-    const x = Math.min(3, Math.max(0, Math.floor(4 * (event.clientX - bounds.left) / bounds.width)));
-    const y = Math.min(3, Math.max(0, Math.floor(4 * (bounds.bottom - event.clientY) / bounds.height)));
-    chooseCell(4 * x + y);
+    const bounds = canvas.getBoundingClientRect(),side=simulation.model.side;
+    const x = Math.min(side-1, Math.max(0, Math.floor(side * (event.clientX - bounds.left) / bounds.width)));
+    const y = Math.min(side-1, Math.max(0, Math.floor(side * (bounds.bottom - event.clientY) / bounds.height)));
+    chooseCell(side * x + y);
   });
   window.addEventListener('keydown', event => {
     if (event.target.matches('input,button,select,summary,[contenteditable]')) return;
@@ -264,6 +281,7 @@ function reconstructWave() {
   gl.useProgram(reconstruction.program);
   gl.uniform4fv(reconstruction.uniforms['uCoefficients[0]'], Float32Array.from(sineCoefficients(simulation.amplitudes)));
   gl.uniform1f(reconstruction.uniforms.uGridSize, GRID);
+  gl.uniform1i(reconstruction.uniforms.uSide,simulation.model.side);
   gl.drawArrays(gl.TRIANGLES, 0, 3); waveDirty = false;
 }
 function render() {
@@ -273,7 +291,7 @@ function render() {
   gl.useProgram(renderer.program); const u = renderer.uniforms;
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, waveTexture); gl.uniform1i(u.uWave, 0);
   gl.uniform1f(u.uVisGain, params.visGain); gl.uniform1f(u.uVisGamma, params.visGamma);
-  gl.uniform1i(u.uShowPhase, params.showPhase ? 1 : 0); gl.uniform1i(u.uShowGrid, params.showGrid ? 1 : 0);
+  gl.uniform1i(u.uSide,simulation.model.side); gl.uniform1i(u.uShowGrid, params.showGrid ? 1 : 0);
   gl.uniform1i(u.uTarget, simulation.target >> 1);gl.uniform1i(u.uWaveView, params.waveView);
   const gate = simulation.active;
   gl.uniform1i(u.uGateRegion, gate?.kind === 'oracle' ? simulation.target >> 1 : gate?.kind === 'reference' ? 0 : -1);
@@ -306,7 +324,7 @@ const api = {
   isReady: () => ready,
   state: () => ({ ...simulation.snapshot(), boxProbability: cachedBoxProbability, grid: GRID, speed: params.speed }),
   reset, setTarget: chooseTarget, selectCell: chooseCell, startNext, runFull, togglePause,
-  setParticleCount,
+  setParticleCount, setGridSize,
   readParticles: () => flow.readParticles(),
   readFlow: () => { const gate=displayGate();flow.prepare(gate,simulation.target);return flow.readField(gate.progress); },
   particleStats: () => flow.statistics(simulation.target, simulation.active?.progress ?? (simulation.last ? 1 : 0), true),
@@ -339,8 +357,8 @@ async function main() {
   const [vertex, waveSource, renderSource] = await Promise.all([
     loadShader('fullscreen.vert'), loadShader('mode_wave.frag'), loadShader('multiregion_render.frag'),
   ]);
-  reconstruction = createProgram(vertex, waveSource, ['uCoefficients[0]', 'uGridSize']);
-  renderer = createProgram(vertex, renderSource, ['uWave', 'uVisGain', 'uVisGamma', 'uShowPhase', 'uShowGrid', 'uTarget', 'uGateRegion', 'uGateFlash', 'uPixelSize', 'uWaveView']);
+  reconstruction = createProgram(vertex, waveSource, ['uCoefficients[0]', 'uGridSize','uSide']);
+  renderer = createProgram(vertex, renderSource, ['uWave', 'uVisGain', 'uVisGamma', 'uSide', 'uShowGrid', 'uTarget', 'uGateRegion', 'uGateFlash', 'uPixelSize', 'uWaveView']);
   waveTexture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, waveTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, linear ? gl.LINEAR : gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, linear ? gl.LINEAR : gl.NEAREST);
@@ -352,6 +370,7 @@ async function main() {
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Could not create the floating-point wave texture.');
   const initializedFlow = new FlowRenderer(gl, GRID, loadShader, createProgram);
   await initializedFlow.init(vertex); flow = initializedFlow;
+  flow.reset(params.particleCount,simulation.model.side);
   ready = true; lastUiKey = ''; syncUi(); dom.loading.hidden = true; document.documentElement.dataset.webgl2 = 'ready';
   document.documentElement.dataset.viewMode = 'single'; render();
   requestAnimationFrame(function loop(now) {

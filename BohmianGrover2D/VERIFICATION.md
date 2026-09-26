@@ -1,5 +1,65 @@
 # Verification — SPINMultiRegionFree
 
+## Selectable 2x2 through 5x5 grids — 2026-09-26
+
+The grid-size slider selects 2, 3, 4, or 5 columns and rows. The runtime model,
+packet basis, spinor shaders, phase-gate current expansion, particle sampling,
+both selection grids, circuit, and Bloch projection use the chosen size.
+There are 8, 18, 32, or 50 joint position-spin states, respectively. The
+physical box revival remains 19.2; preparation takes T=19.2/(2N), and the
+positive-time inverse takes (2N-1)T. Full searches use 2, 3, 4, or 5 iterations.
+
+The individual gate buttons and phase-color button are removed. Apply next
+operation and Run full search share one row. Changing size resets even an
+active or paused search, preserves the goal spin, and clamps its position.
+Coordinate labels and two N-level position wires also cover the odd grids.
+
+Commands:
+
+    node --test tests/multiregion.test.mjs tests/flow.test.mjs tests/grid-sizes.test.mjs
+    node tests/static-check.mjs
+
+**28/28 numerical tests pass.** The existing 4x4 tests and added 2x2, 3x3, and
+5x5 checks cover all 108 joint goals across the four sizes. Comparisons use
+independent dense complex-matrix exponentials, finite-difference continuity,
+wall flux, spatial quadrature, and initial particle sampling. Additional-grid
+maximum amplitude error is 1.459e-13; continuity residual is 1.277e-7.
+Resizing during running/paused gates and independent differently sized
+simulations also pass. Static checks cover 70 DOM references, unique IDs,
+18 shader/include sources, local assets, and the recording bridge.
+
+Actual browser checks ran on NVIDIA GeForce RTX 4070 Ti SUPER, ANGLE / D3D11,
+using the production 512x512 RGBA32F wave texture:
+
+- **Wave/UI: 355/355**, with 184 GPU spinor readbacks across all four sizes.
+  Maximum wave component error 4.560e-6; integrated norm error 5.511e-7;
+  modal amplitude error 3.652e-13; Bloch/readout error 6.906e-13.
+  Every gate interior and both goal spins are covered, along with slider
+  changes, repeated-click spin flipping, circuit labels, and shared clocks.
+- **Flow: 449/449**, including 4,000-particle searches at every size, GPU
+  total/spin-current readbacks, 8x8 histograms, and a complete 16,000-particle
+  5x5 search. Maximum current component error 5.178e-5; sampled density error
+  4.526e-5; region sampling difference 1.708 percentage points; histogram
+  total variation 5.456%. Failed steps and invalid/out-of-box particles: 0.
+  Maximum sampled particle-clock lag: 3.331e-16.
+- The wider grid sweep exposed rare node passages that exhausted the former
+  384-substep per-particle budget. Raising its maximum to 2,048 removes the
+  observed lag without changing the adaptive tolerances or guidance law.
+  Ordinary particles still exit as soon as they reach the requested time.
+- **Trails: 11/11**. Length and visibility preserve wave/particle evolution;
+  pause/reset, tiny-step decay, GPU rebaking, and recording exposure pass.
+  Decay ratios 0.933033 and 0.466516; recording/live exposure ratio 0.984916.
+- All three fixtures finish with WebGL error code 0 and no browser warnings
+  or errors. The 5x5 control and wave layout was also visually inspected.
+
+These retain the finite-precision, finite-ensemble, and nonlocal phase-gate
+guidance qualifications described below and in README.md.
+
+## Historical fixed-4x4 spin extension
+
+The next section records the original spin implementation before selectable
+grid sizes. Its 32-state counts and fixed timing describe the 4x4 setting.
+
 ## Spin extension — 2026-09-26
 
 Created from MultiRegionFreeMixing at 669590b1ba7b6c1d5b57b2043bb7d43196a1f7a8.
