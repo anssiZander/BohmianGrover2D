@@ -23,7 +23,8 @@ Open http://127.0.0.1:8835/ in a desktop WebGL2 browser. No dependencies or buil
   up/down views use the original phase palette. A spinor has no single scalar
   phase; the total view therefore does not assign one.
 - **Spin directions** draws local polarization: an oriented line for its
-  in-plane projection, dots/rings for the positive/negative normal component.
+  in-plane projection, circles for spin pointing out of the screen and crosses
+  for spin pointing into it.
 - **Arrows** selects total current, transport current (convective plus any
   phase-gate correction), or spin current. This only changes the arrows.
   The particles always follow total current divided by total density, including
