@@ -1,90 +1,108 @@
-import { STATE_COUNT, FREE_OMEGA, sineCoefficients, PACKET_TRANSFORM } from './multiregion-core.js';
+import { STATE_COUNT, SPATIAL_COUNT, FREE_OMEGA, HBAR_OVER_M, sineCoefficients, PACKET_TRANSFORM } from './multiregion-core.js';
 
-// Free intervals use the ordinary Schrodinger current. For ideal phase pulses,
-// products of four sine modes contain only cosine frequencies 0..8: solve the
-// Neumann Poisson equation spectrally to select their curl-free transport.
+// Full reduced Pauli current: convective spinor current plus curl of spin density.
+// At nonlocal gates, add grad(u), Delta u = -rho_dot - div(j_Pauli).
 export const FLOW_MODES = 9;
-
-function crossDensity(a, b) {
-  const re = new Float64Array(81), im = new Float64Array(81);
-  for (let q = 0; q < 16; q++) for (let r = 0; r < 16; r++) {
-    const real = a[2*q]*b[2*r] + a[2*q+1]*b[2*r+1];
-    const imag = a[2*q]*b[2*r+1] - a[2*q+1]*b[2*r];
-    const nx = [Math.abs((q >> 2) - (r >> 2)), (q >> 2) + (r >> 2) + 2];
-    const ny = [Math.abs((q & 3) - (r & 3)), (q & 3) + (r & 3) + 2];
-    // u_n u_m = cos((n-m) pi x) - cos((n+m) pi x).
-    for (let x = 0; x < 2; x++) for (let y = 0; y < 2; y++) {
-      const sign = x === y ? 1 : -1, k = 9*nx[x]+ny[y];
-      re[k] += sign*real; im[k] += sign*imag;
+// Cosine coefficients of a†b, summed over both spin components. Products of
+// sine modes 1..4 contain cosine frequencies 0..8, so this expansion is exact.
+function crossDensity(a,b) {
+  const re=new Float64Array(81),im=new Float64Array(81);
+  for(let q=0;q<SPATIAL_COUNT;q++)for(let r=0;r<SPATIAL_COUNT;r++) {
+    let real=0,imag=0;
+    for(let s=0;s<2;s++){
+      const i=4*q+2*s,j=4*r+2*s;
+      real+=a[i]*b[j]+a[i+1]*b[j+1];imag+=a[i]*b[j+1]-a[i+1]*b[j];
+    }
+    const nx=[Math.abs((q>>2)-(r>>2)),(q>>2)+(r>>2)+2],ny=[Math.abs((q&3)-(r&3)),(q&3)+(r&3)+2];
+    for(let x=0;x<2;x++)for(let y=0;y<2;y++){
+      const sign=x===y?1:-1,k=9*nx[x]+ny[y];re[k]+=sign*real;im[k]+=sign*imag;
+    }
+  }return {re,im};
+}
+function kineticDerivative(a) {
+  const out=new Float64Array(a.length);
+  for(let q=0;q<SPATIAL_COUNT;q++)for(let s=0;s<2;s++){
+    const i=4*q+2*s,e=FREE_OMEGA*((1+(q>>2))**2+(1+(q&3))**2);
+    out[i]=e*a[i+1];out[i+1]=-e*a[i];
+  }return out;
+}
+export function gateFlow(start,kind,target,duration) {
+  if(['prepare','forward','inverse'].includes(kind))return {
+    mode:'free',coefficients:sineCoefficients(start),span:FREE_OMEGA*duration,
+    spinAngle:(kind==='inverse'?-1:1)*Math.PI/2,duration,
+  };
+  if(kind!=='oracle'&&kind!=='reference')throw Error('Unknown phase gate: '+kind);
+  const fixed=Float64Array.from(start),rotating=new Float64Array(2*STATE_COUNT),q=kind==='oracle'?target:0;
+  rotating[2*q]=fixed[2*q];rotating[2*q+1]=fixed[2*q+1];fixed[2*q]=0;fixed[2*q+1]=0;
+  const f=sineCoefficients(fixed),g=sineCoefficients(rotating),cross=crossDensity(f,g);
+  const dc=cross.re.map(v=>2*v),ds=cross.im.map(v=>2*v),df=kineticDerivative(f),dg=kineticDerivative(g);
+  const ff=crossDensity(f,df),gg=crossDensity(g,dg),fg=crossDensity(f,dg),gf=crossDensity(g,df);
+  const potential=new Float64Array(3*81),rate=Math.PI/duration;
+  // div(j_P) = -rho_dot_kinetic; the magnetization current has zero divergence.
+  // With Delta cos(n*pi*x)cos(m*pi*y) = -lambda*cos*cos, the correction
+  // coefficients are (rho_dot_actual - rho_dot_kinetic)/lambda.
+  // Pack their constant, cos(pi*p), and sin(pi*p) terms per spatial frequency.
+  for(let n=0;n<9;n++)for(let m=0;m<9;m++){
+    const k=9*n+m,lambda=Math.PI**2*(n*n+m*m);if(!lambda)continue;
+    const k0=2*(ff.re[k]+gg.re[k]),kc=2*(fg.re[k]+gf.re[k]),ks=2*(fg.im[k]-gf.im[k]);
+    potential[3*k]=-k0/lambda;
+    potential[3*k+1]=(rate*ds[k]-kc)/lambda;
+    potential[3*k+2]=(-rate*dc[k]-ks)/lambda;
+  }
+  dc[0]=0;ds[0]=0;
+  return {mode:'phase',f,g,dc,ds,potential,duration};
+}
+export function spinorFields(coefficients,x,y) {
+  const psi=[0,0,0,0],gx=[0,0,0,0],gy=[0,0,0,0],dt=[0,0,0,0];
+  for(let n=1;n<=4;n++)for(let m=1;m<=4;m++){
+    const q=4*(4*(n-1)+m-1),sx=Math.sin(n*Math.PI*x),sy=Math.sin(m*Math.PI*y);
+    const w=2*sx*sy,wx=2*n*Math.PI*Math.cos(n*Math.PI*x)*sy,wy=2*m*Math.PI*sx*Math.cos(m*Math.PI*y);
+    for(let k=0;k<4;k++){psi[k]+=w*coefficients[q+k];gx[k]+=wx*coefficients[q+k];gy[k]+=wy*coefficients[q+k];}
+    const energy=FREE_OMEGA*(n*n+m*m);
+    for(let s=0;s<2;s++){dt[2*s]+=energy*w*coefficients[q+2*s+1];dt[2*s+1]-=energy*w*coefficients[q+2*s];}
+  }return {psi,gx,gy,dt};
+}
+export function pauliCurrent(psi,gx,gy) {
+  const conv=[0,0],spin=[0,0];
+  for(let s=0;s<2;s++){
+    const k=2*s,sign=s===0?1:-1;
+    conv[0]+=HBAR_OVER_M*(psi[k]*gx[k+1]-psi[k+1]*gx[k]);
+    conv[1]+=HBAR_OVER_M*(psi[k]*gy[k+1]-psi[k+1]*gy[k]);
+    spin[0]+=HBAR_OVER_M*sign*(psi[k]*gy[k]+psi[k+1]*gy[k+1]);
+    spin[1]-=HBAR_OVER_M*sign*(psi[k]*gx[k]+psi[k+1]*gx[k+1]);
+  }
+  return {convective:conv,spin};
+}
+export function flowAt(flow,x,y,progress) {
+  let coefficients,drho=0,correction=[0,0],correctionDivergence=0;
+  if(flow.mode==='free'){
+    coefficients=new Float64Array(flow.coefficients.length);
+    const ca=Math.cos(flow.spinAngle*progress/2),sa=Math.sin(flow.spinAngle*progress/2);
+    for(let q=0;q<SPATIAL_COUNT;q++){
+      const a=flow.span*progress*((1+(q>>2))**2+(1+(q&3))**2),c=Math.cos(a),s=Math.sin(a),v=[];
+      for(let k=0;k<4;k+=2){v[k]=c*flow.coefficients[4*q+k]+s*flow.coefficients[4*q+k+1];v[k+1]=c*flow.coefficients[4*q+k+1]-s*flow.coefficients[4*q+k];}
+      for(let k=0;k<2;k++){coefficients[4*q+k]=ca*v[k]-sa*v[k+2];coefficients[4*q+k+2]=sa*v[k]+ca*v[k+2];}
+    }
+  }else{
+    const a=Math.PI*progress,c=Math.cos(a),s=Math.sin(a),rate=Math.PI/flow.duration;
+    coefficients=new Float64Array(flow.f.length);
+    for(let k=0;k<coefficients.length;k+=2){coefficients[k]=flow.f[k]+c*flow.g[k]+s*flow.g[k+1];coefficients[k+1]=flow.f[k+1]+c*flow.g[k+1]-s*flow.g[k];}
+    for(let n=0;n<9;n++)for(let m=0;m<9;m++){
+      const k=9*n+m,cx=Math.cos(n*Math.PI*x),cy=Math.cos(m*Math.PI*y);
+      const chi=flow.potential[3*k]+c*flow.potential[3*k+1]+s*flow.potential[3*k+2];
+      drho+=rate*(-s*flow.dc[k]+c*flow.ds[k])*cx*cy;
+      correction[0]-=n*Math.PI*Math.sin(n*Math.PI*x)*cy*chi;
+      correction[1]-=m*Math.PI*cx*Math.sin(m*Math.PI*y)*chi;
+      correctionDivergence-=Math.PI**2*(n*n+m*m)*cx*cy*chi;
     }
   }
-  return { re, im };
-}
-
-export function gateFlow(start, kind, target, duration) {
-  if (kind === 'prepare' || kind === 'forward' || kind === 'inverse') {
-    return { mode: 'free', coefficients: sineCoefficients(start), span: FREE_OMEGA*duration, duration, direction: 1 };
-  }
-  const fixed = Float64Array.from(start), rotating = new Float64Array(2*STATE_COUNT);
-  if (kind === 'oracle' || kind === 'reference') {
-    const q = kind === 'oracle' ? target : 0;
-    rotating[2*q] = fixed[2*q]; rotating[2*q+1] = fixed[2*q+1];
-    fixed[2*q] = 0; fixed[2*q+1] = 0;
-  } else throw new Error(`Unknown phase gate: ${kind}`);
-  const f = sineCoefficients(fixed), g = sineCoefficients(rotating);
-  const cross = crossDensity(f,g), dc = cross.re.map(v => 2*v), ds = cross.im.map(v => 2*v);
-  // fixed and rotating are orthogonal projector components. Their exact cross
-  // integral is zero; discard only floating-point roundoff of this zero mode.
-  dc[0] = 0; ds[0] = 0;
-  const potential = new Float32Array(162);
-  for (let n = 0; n < 9; n++) for (let m = 0; m < 9; m++) {
-    const k = 9*n+m, lambda = Math.PI**2*(n*n+m*m);
-    if (lambda) { potential[2*k] = dc[k]/lambda; potential[2*k+1] = ds[k]/lambda; }
-  }
-  return { mode: 'phase', f, g, dc, ds, potential, direction: 1, duration };
-}
-
-export function flowAt(flow, x, y, progress) {
-  if (flow.mode === 'free') return freeFlowAt(flow, x, y, progress);
-  const cx = [], cy = [], sx = [], sy = [];
-  for (let n = 0; n < 9; n++) {
-    cx.push(Math.cos(n*Math.PI*x)); cy.push(Math.cos(n*Math.PI*y));
-    sx.push(Math.sin(n*Math.PI*x)); sy.push(Math.sin(n*Math.PI*y));
-  }
-  const angle = flow.direction*Math.PI*progress, c = Math.cos(angle), s = Math.sin(angle);
-  const rate = flow.direction*Math.PI/flow.duration;
-  let drho = 0, jx = 0, jy = 0, divergence = 0, fr = 0, fi = 0, gr = 0, gi = 0;
-  for (let n = 0; n < 4; n++) for (let m = 0; m < 4; m++) {
-    const k = 2*(4*n+m), weight = 2*sx[n+1]*sy[m+1];
-    fr += weight*flow.f[k]; fi += weight*flow.f[k+1];
-    gr += weight*flow.g[k]; gi += weight*flow.g[k+1];
-  }
-  const re = fr+c*gr+s*gi, im = fi+c*gi-s*gr;
-  for (let n = 0; n < 9; n++) for (let m = 0; m < 9; m++) {
-    const k = 9*n+m, source = rate*(-s*flow.dc[k]+c*flow.ds[k]);
-    drho += source*cx[n]*cy[m];
-    if (!n && !m) continue;
-    const chi = source/(Math.PI**2*(n*n+m*m));
-    jx -= n*Math.PI*chi*sx[n]*cy[m]; jy -= m*Math.PI*chi*cx[n]*sy[m];
-    divergence -= source*cx[n]*cy[m];
-  }
-  return { rho: re*re+im*im, drho, current: [jx,jy], divergence };
-}
-
-function freeFlowAt(flow, x, y, progress) {
-  let re=0,im=0,dxr=0,dxi=0,dyr=0,dyi=0,dtr=0,dti=0;
-  for (let n=1;n<=4;n++) for (let m=1;m<=4;m++) {
-    const q=2*(4*(n-1)+m-1), energy=n*n+m*m, angle=flow.span*progress*energy;
-    const c=Math.cos(angle),s=Math.sin(angle),a=flow.coefficients;
-    const r=c*a[q]+s*a[q+1],i=c*a[q+1]-s*a[q];
-    const sx=Math.sin(n*Math.PI*x),sy=Math.sin(m*Math.PI*y);
-    const w=2*sx*sy,wx=2*n*Math.PI*Math.cos(n*Math.PI*x)*sy,wy=2*m*Math.PI*sx*Math.cos(m*Math.PI*y);
-    re+=w*r;im+=w*i;dxr+=wx*r;dxi+=wx*i;dyr+=wy*r;dyi+=wy*i;
-    dtr+=FREE_OMEGA*energy*w*i;dti-=FREE_OMEGA*energy*w*r;
-  }
-  const factor=2*FREE_OMEGA/Math.PI**2,drho=2*(re*dtr+im*dti);
-  return {psi:[re,im],rho:re*re+im*im,drho,divergence:-drho,
-    current:[factor*(re*dxi-im*dxr),factor*(re*dyi-im*dyr)]};
+  const fields=spinorFields(coefficients,x,y),{psi,gx,gy,dt}=fields,{convective,spin}=pauliCurrent(psi,gx,gy);
+  const kineticDrho=2*psi.reduce((s,v,k)=>s+v*dt[k],0);
+  if(flow.mode==='free')drho=kineticDrho; // A uniform spin drive preserves rho pointwise.
+  const rho=psi.reduce((s,v)=>s+v*v,0),polarization=rho>1e-24?
+    [2*(psi[0]*psi[2]+psi[1]*psi[3])/rho,2*(psi[0]*psi[3]-psi[1]*psi[2])/rho,(psi[0]**2+psi[1]**2-psi[2]**2-psi[3]**2)/rho]:[0,0,0];
+  return {rho,drho,psi,polarization,convective,spin,correction,
+    current:convective.map((v,k)=>v+spin[k]+correction[k]),divergence:-kineticDrho+correctionDivergence};
 }
 
 // Inverse CDF of the initial 1D packet. Stratification and a deterministic

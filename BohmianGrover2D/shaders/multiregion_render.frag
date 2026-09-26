@@ -8,6 +8,7 @@ uniform float uVisGamma;
 uniform int uShowPhase;
 uniform int uShowGrid;
 uniform int uTarget;
+uniform int uWaveView;
 uniform int uGateRegion;
 uniform float uGateFlash;
 uniform float uPixelSize;
@@ -35,11 +36,20 @@ float regionMask(vec2 uv, int q) {
 void main() {
   vec2 uv = clamp(vUV, 0.0, 1.0);
   vec2 texel = 1.0 / vec2(textureSize(uWave, 0));
-  vec2 psi = texture(uWave, mix(.5 * texel, 1.0 - .5 * texel, uv)).rg;
-  float rho = dot(psi, psi);
-  float intensity = pow(clamp(1.0 - exp(-uVisGain * rho), 0.0, 1.0), uVisGamma);
-  float phase = rho > 1e-20 ? atan(psi.y, psi.x) : 0.0;
-  vec3 col = uShowPhase == 1 ? phasePalette(phase, intensity) : densityPalette(intensity) * intensity;
+  vec4 spinor=texture(uWave,mix(.5*texel,1.0-.5*texel,uv));
+  vec2 psi=uWaveView==2?spinor.zw:spinor.xy;
+  float up=dot(spinor.xy,spinor.xy),down=dot(spinor.zw,spinor.zw);
+  float rho=uWaveView==0?up+down:dot(psi,psi);
+  float intensity=pow(clamp(1.0-exp(-uVisGain*rho),0.0,1.0),uVisGamma);
+  float phase=rho>1e-20?atan(psi.y,psi.x):0.0;
+  vec3 col;
+  if(uWaveView==0){
+    float spinZ=(up-down)/max(up+down,1e-20);
+    vec3 tint=mix(vec3(.86,.12,.52),vec3(.08,.72,.98),.5+.5*spinZ);
+    tint=mix(vec3(.42,.25,.82),tint,abs(spinZ));
+    col=vec3(.008,.015,.035)+intensity*tint;
+    col+=.18*pow(intensity,5.0)*vec3(.8,.95,1.0);
+  }else col=uShowPhase==1?phasePalette(phase,intensity):densityPalette(intensity)*intensity;
 
   float wall = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
   float rim = 1.0 - smoothstep(uPixelSize, 3.0 * uPixelSize, wall);

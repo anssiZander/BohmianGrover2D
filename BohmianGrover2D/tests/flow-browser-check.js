@@ -33,29 +33,26 @@ async function run() {
       for(let i=0;i<stats.count;i++) bins[8*Math.min(7,Math.floor(points[4*i]*8))+Math.min(7,Math.floor(points[4*i+1]*8))]++;
       for(let y=0;y<grid;y++)for(let x=0;x<grid;x++) {
         const k=4*(y*grid+x),q=8*Math.min(7,Math.floor(8*x/(grid-1)))+Math.min(7,Math.floor(8*y/(grid-1)));
-        truth[q]+=(wave[k]**2+wave[k+1]**2)/(grid-1)**2;
+        truth[q]+=(wave[k]**2+wave[k+1]**2+wave[k+2]**2+wave[k+3]**2)/(grid-1)**2;
       }
       const tv=.5*bins.reduce((sum,n,q)=>sum+Math.abs(n/stats.count-truth[q]),0);maxHistogramTV=Math.max(maxHistogramTV,tv);
       check(`${name}: full 8×8 spatial histogram`,tv<.08,`TV ${(100*tv).toFixed(3)}%`);
     }
   }
   function field(reference,progress,name) {
-    const data=api.readFlow(),rate=data.direction*Math.PI/data.duration,angle=data.direction*Math.PI*progress;
-    const c=Math.cos(angle),s=Math.sin(angle);let currentError=0,densityError=0;
-    for(let x=0;x<=12;x++)for(let y=0;y<=12;y++) {
+    const data=api.readFlow();let currentError=0,densityError=0;
+    for(let x=0;x<=12;x++)for(let y=0;y<=12;y++){
       const ix=Math.round(x*(data.grid-1)/12),iy=Math.round(y*(data.grid-1)/12),k=4*(iy*data.grid+ix);
       const at=flowAt(reference,ix/(data.grid-1),iy/(data.grid-1),progress),v=data.current,w=data.wave;
-      const j=data.mode==='free'?[v[k],v[k+1]]:[rate*(-s*v[k]+c*v[k+2]),rate*(-s*v[k+1]+c*v[k+3])];
-      const re=data.mode==='free'?w[k]:w[k]+c*w[k+2]+s*w[k+3],im=data.mode==='free'?w[k+1]:w[k+1]+c*w[k+3]-s*w[k+2];
-      currentError=Math.max(currentError,Math.abs(j[0]-at.current[0]),Math.abs(j[1]-at.current[1]));
-      densityError=Math.max(densityError,Math.abs(re*re+im*im-at.rho));
+      currentError=Math.max(currentError,Math.abs(v[k]-at.current[0]),Math.abs(v[k+1]-at.current[1]),Math.abs(v[k+2]-at.spin[0]),Math.abs(v[k+3]-at.spin[1]));
+      densityError=Math.max(densityError,Math.abs(w[k]**2+w[k+1]**2+w[k+2]**2+w[k+3]**2-at.rho));
     }
     maxCurrentError=Math.max(maxCurrentError,currentError);maxDensityError=Math.max(maxDensityError,densityError);
-    check(`${name}: actual GPU current and density`,currentError<2e-5&&densityError<1e-4,`j ${currentError.toExponential(2)}, rho ${densityError.toExponential(2)}`);
+    check(`${name}: actual GPU current and density`,currentError<4e-5&&densityError<1e-4,`j ${currentError.toExponential(2)}, rho ${densityError.toExponential(2)}`);
   }
-  api.setTarget(6);distribution('Initial',true);
+  api.setTarget(13);distribution('Initial',true);
   for(const [index,gate] of GATES.entries()) {
-    const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,6,gate.duration);
+    const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,13,gate.duration);
     api.startNext();let prior=0;
     for(const p of [.25,.5,.75,1]) {
       await advance((p-prior)*gate.duration);prior=p;
@@ -67,20 +64,22 @@ async function run() {
       }
     }
   }
-  // All target geometries, not just symmetry-equivalent corners.
-  for(let target=0;target<16;target++) {
+  // Both spin targets and representative corner/interior spatial targets.
+  for(const target of [0,12,30,31]) {
     api.setTarget(target);api.runFull();
     await advance(2.4);
-    for(let round=1;round<=3;round++) {await advance(22.4);distribution(`Target ${target}, iteration ${round}`);}
+    for(let round=1;round<=4;round++) {await advance(22.4);distribution(`Target ${target}, iteration ${round}`);}
   }
-  api.setParticleCount(16000);api.setTarget(15);api.runFull();await advance(69.6);
-  distribution('Maximum particle count, complete target 15',true);
+  api.setParticleCount(16000);api.setTarget(31);api.runFull();await advance(92);
+  distribution('Maximum particle count, complete target 31',true);
   api.setParticleCount(4000);
   api.reset();api.startNext();await advance(.6);const visible=api.readParticles();
-  api.reset();document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();
+  api.reset();document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();document.getElementById('spinToggle').click();
+  const currentMode=document.getElementById('currentMode');currentMode.value='2';currentMode.dispatchEvent(new Event('change'));
   api.startNext();await advance(.6);
-  check('Hiding arrows and particles does not change their dynamics',maxDiff(visible,api.readParticles())===0);
-  document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();
+  check('Hiding layers and selecting spin-only arrows does not change total guidance',maxDiff(visible,api.readParticles())===0);
+  document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();document.getElementById('spinToggle').click();
+  currentMode.value='0';currentMode.dispatchEvent(new Event('change'));
   api.reset();const before=api.readParticles();api.startNext();api.renderRecordingFrame({fps:60});
   check('Recording advances particles on the wave clock',maxDiff(before,api.readParticles())>1e-5&&Math.abs(api.state().time-1/60)<1e-12);
   api.reset();

@@ -1,4 +1,99 @@
-# Verification — MultiRegionFreeMixing 4×4
+# Verification — SPINMultiRegionFree
+
+## Spin extension — 2026-09-26
+
+Created from MultiRegionFreeMixing at 669590b1ba7b6c1d5b57b2043bb7d43196a1f7a8.
+
+The state has 32 complex amplitudes: 16 spatial packets in each spin channel.
+Mixing combines exact free evolution with Ry(pi/2); the inverse combines the
+positive 7T spatial wait with Ry(-pi/2). Oracle/reference pulses select one
+joint coefficient. Four iterations end at 99.91823155% for every joint target.
+
+Free intervals use the full reduced planar Pauli current. During ideal
+nonlocal phase gates, a Neumann gradient correction supplies the missing
+divergence while preserving the Pauli circulation. This is the explicitly
+chosen generalized guidance law documented in README.md. It is not a local
+Pauli realization of the mode-selective phase Hamiltonian.
+
+### Numerical and static checks
+
+Commands:
+
+    node --test tests/multiregion.test.mjs tests/flow.test.mjs
+    node tests/static-check.mjs
+
+**17/17 numerical tests pass.** The independent reference builds a dense
+complex 32x32 Hamiltonian and exponentiates it without production basis data
+or propagators. All 32 goals and all 17 gates are checked at nine progress
+values (4,896 continuous states).
+
+- Maximum matrix-exponential amplitude difference: 1.577e-13.
+- Maximum normalization error: 4.885e-15.
+- Independent density time-derivative difference: 2.710e-8.
+- Finite-difference continuity residual: 2.702e-8.
+- Box-boundary current versus probability-gain difference: 1.411e-9.
+- Spin-density curl equals the sum of density-gradient and nonuniform-spin
+  terms. The test uses a nonzero spin texture; reversing a uniform spin
+  reverses its magnetization current.
+- Positive-time inverse, hard walls, partial spin probabilities, entanglement,
+  Bloch projection, checkpoints, target locking, and pause/reset all pass.
+- Static checks cover 66 DOM references, unique IDs, 18 runtime shader/include
+  sources, local assets, and the recording bridge.
+
+### Actual browser and GPU checks
+
+Run in the app browser on NVIDIA GeForce RTX 4070 Ti SUPER, ANGLE / D3D11,
+using the production 512x512 RGBA32F spinor field.
+
+**tests/browser-check.html: 157/157.**
+
+- 89 spinor readbacks, including every gate's interior and complete searches
+  for joint targets 0, 7, 24, and 31.
+- Maximum GPU spinor component error: 3.665e-6; integrated norm error: 5.221e-7.
+- Maximum modal amplitude error: 4.111e-13; Bloch/readout error: 4.568e-13.
+- Four amplification checkpoints and final probability match the independent
+  reference. Grid spin flipping, target locking, and clocks pass.
+- WebGL error code 0.
+
+**tests/flow-browser-check.html: 244/244.**
+
+- GPU total current, spin current, and density checked at four progress values
+  in all 17 gates for joint target 13.
+- Full 4,000-particle spatial counts and 8x8 histograms across that run.
+- Additional complete 4,000-particle searches for joint targets 0, 12, 30, 31,
+  and a complete 16,000-particle search for target 31.
+- Maximum sampled GPU current component difference: 2.452e-5.
+- Maximum sampled GPU density difference: 9.350e-5.
+- Largest region sampling difference: 2.430 percentage points.
+- Largest 8x8 histogram total variation: 5.498%.
+- Failed integration steps: 0; invalid/out-of-box particles: 0.
+- Maximum particle clock lag: 5.552e-16; WebGL error code: 0.
+- Layer visibility and spin-only arrow selection leave total guidance unchanged.
+- The GPU probe uses separate attachments and explicitly binds its sampler
+  inputs. This prevents the first readback from sampling its own output.
+
+**tests/trail-browser-check.html: 11/11.**
+
+- Length affects history without changing wave or particle buffers.
+- Pause/reset and tiny-step fading pass.
+- Retained intensity after 1.2 seconds with 12-second half-life: 0.933033;
+  after another 12 seconds and GPU rebaking: 0.466516.
+- Recording/live exposure ratio: 0.984916.
+- WebGL error code 0.
+
+Visual review covered a paused second-round inverse with position-spin
+entanglement, total spin colors, the down-component phase view, and isolated
+spin-current arrows. The brighter, denser spin circulation made the inherited
+trail exposure obscure the density, so display exposure is reduced to 0.18
+while retaining the same accumulated paths and decay law.
+
+These are finite-precision and finite-sample checks on this GPU, not a claim
+that the modal gates are a unique local physical implementation.
+
+## Historical results from the parent branches
+
+The remaining sections are retained as history. Their 16-state counts, scalar
+currents, and three-iteration timing do not describe this spin branch.
 
 ## Free-box mixers and forward-wait inverse — 2026-09-24
 

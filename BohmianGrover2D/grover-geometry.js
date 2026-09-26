@@ -1,13 +1,13 @@
 import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
-const gateNames = { input: 'Input |0000⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
+const gateNames = { input: 'Input |0000,↑⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
 const descriptions = {
-  input: 'Start in the lower-left logical packet |0000⟩. Preparation will spread its amplitude over all 16 modes.',
-  prepare: 'Free evolution creates equal probabilities with definite relative phases in all 16 modes. The cyan point marks this prepared state |s⟩.',
+  input: 'Start in the lower-left logical packet |0000,↑⟩. Preparation will spread its amplitude over all 32 joint states.',
+  prepare: 'Free evolution and a spin rotation create equal probabilities with definite relative phases in all 32 joint states. The cyan point marks this prepared state |s⟩.',
   oracle: 'The oracle turns the marked amplitude through π. All logical probabilities stay fixed during this phase gate.',
-  inverse: 'A† is reached by continuing forward under the free Hamiltonian for 7T. The projection follows the full intervening evolution.',
-  reference: 'A π phase pulse on |0000⟩ is the central operation of the diffuser.',
+  inverse: 'A† combines forward free motion for 7T with the inverse spin rotation. The projection follows the full intervening evolution.',
+  reference: 'A π phase pulse on |0000,↑⟩ is the central operation of the diffuser.',
   forward: 'The forward mixer completes this Grover iteration. Interference increases the marked amplitude.',
 };
 
@@ -162,7 +162,7 @@ export function createGroverGeometry(root) {
       const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
       nodes.status.textContent = complete ? 'Search complete' : `${round}${gateNames[kind]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : kind !== 'input' ? ' · held' : ''}`;
       nodes.description.textContent = !state.bloch.vector ? 'The projection has zero weight, so its direction is undefined.'
-        : complete ? 'Three Grover iterations reach 96.1% marked probability. The vector stops near the marked pole; standard π pulses do not reach exactly 100% for 16 states.' : descriptions[kind];
+        : complete ? 'Four Grover iterations reach 99.918% in the marked position–spin state. This effective sphere describes the search, not the physical spin.' : descriptions[kind];
       nodes.markedValue.textContent = percent(state.targetProbability);
       nodes.weightValue.textContent = percent(state.bloch.weight);
       nodes.outsideValue.textContent = percent(state.outsideProbability);

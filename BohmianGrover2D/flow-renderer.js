@@ -1,4 +1,9 @@
+import { HBAR_OVER_M } from './multiregion-core.js';
 import { gateFlow, sampleInitialParticles } from './probability-flow.js';
+
+// Spin circulation revisits the same pixels frequently. Keep the underlying
+// light accumulation, but lower its displayed exposure to reveal the spinor.
+const TRAIL_EXPOSURE = .18;
 
 export class FlowRenderer {
   constructor(gl, grid, loadShader, createProgram) {
@@ -8,23 +13,24 @@ export class FlowRenderer {
   }
   async init(vertex) {
     const loadShader=this.loadShader;
-    const [basis,shared,update,empty,points,dots,arrows,arrowFragment,trail,trailFragment,composite,fade,probe]=await Promise.all([
+    const [basis,shared,update,empty,points,dots,arrows,arrowFragment,trail,trailFragment,composite,fade,probe,spinVertex,spinFragment]=await Promise.all([
       loadShader('flow_basis.frag'),loadShader('flow_sample.glsl'),loadShader('flow_particle_update.vert'),
       loadShader('particle_update.frag'),loadShader('flow_particles.vert'),loadShader('particle_render.frag'),
       loadShader('flow_arrows.vert'),loadShader('phase_arrows.frag'),loadShader('flow_trail.vert'),
       loadShader('flow_trail.frag'),loadShader('flow_trail_composite.frag'),loadShader('flow_trail_fade.frag'),
-      loadShader('flow_free_probe.frag'),
+      loadShader('flow_free_probe.frag'),loadShader('spin_glyphs.vert'),loadShader('spin_glyphs.frag'),
     ]);
     const program=this.createProgram;
-    this.basis=program(vertex,basis,['uFixed[0]','uRotating[0]','uPotential[0]','uGridSize']);
-    const fieldUniforms=['uWaveParts','uCurrentParts','uFree','uFreeCoefficients[0]','uFreeSpan'];
+    this.basis=program(vertex,basis,['uPotential[0]','uGridSize']);
+    const fieldUniforms=['uCorrectionA','uCorrectionB','uFree','uFreeCoefficients[0]','uFixed[0]','uRotating[0]','uFreeSpan','uSpinAngle','uDuration','uHbarOverM'];
     this.update=program(update.replace('// FLOW_SAMPLE',shared),empty,
       [...fieldUniforms,'uEnd','uNewGate'],['nextState']);
     this.points=program(points,dots,['uPointSize','uDotSigma','uDotGain']);
     this.arrows=program(arrows.replace('// FLOW_SAMPLE',shared),arrowFragment,
-      [...fieldUniforms,'uProgress','uDuration','uGain','uArrowGrid']);
+      [...fieldUniforms,'uProgress','uGain','uArrowGrid','uCurrentMode']);
     this.probe=program(vertex,probe.replace('// FLOW_SAMPLE',shared),
-      [...fieldUniforms,'uGridSize','uProgress','uDuration']);
+      [...fieldUniforms,'uGridSize','uProgress']);
+    this.spinGlyphs=program(spinVertex,spinFragment,['uWave','uSpinGrid']);
     this.trail=program(trail,trailFragment,['uWidth','uStampGain']);
     this.composite=program(vertex,composite,['uTrail','uScale']);
     this.fade=program(vertex,fade,['uTrail','uFade']);
@@ -42,11 +48,11 @@ export class FlowRenderer {
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,4,gl.FLOAT,false,16,0);gl.vertexAttribDivisor(a,1);
       }return vao;
     });
-    this.waveParts=this.texture(this.grid,gl.RGBA32F,gl.FLOAT);
-    this.currentParts=this.texture(this.grid,gl.RGBA32F,gl.FLOAT);
+    this.correctionA=this.texture(this.grid,gl.RGBA32F,gl.FLOAT);
+    this.correctionB=this.texture(this.grid,gl.RGBA32F,gl.FLOAT);
     this.basisFbo=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,this.waveParts,0);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,this.currentParts,0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,this.correctionA,0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,this.correctionB,0);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]);
     this.checkFramebuffer();
     // DoubleSlit2.0-style additive light density, tone-mapped only at display.
@@ -91,18 +97,22 @@ export class FlowRenderer {
     const gl=this.gl,u=this.basis.uniforms;
     gl.disable(gl.BLEND);gl.bindVertexArray(this.emptyVao);gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);
     gl.viewport(0,0,this.grid,this.grid);gl.useProgram(this.basis.program);
-    gl.uniform2fv(u['uFixed[0]'],Float32Array.from(this.data.f));gl.uniform2fv(u['uRotating[0]'],Float32Array.from(this.data.g));
-    gl.uniform2fv(u['uPotential[0]'],this.data.potential);gl.uniform1f(u.uGridSize,this.grid);
+    gl.uniform3fv(u['uPotential[0]'],Float32Array.from(this.data.potential));gl.uniform1f(u.uGridSize,this.grid);
     gl.drawArrays(gl.TRIANGLES,0,3);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
   fieldUniforms(u) {
     const gl=this.gl,free=this.data.mode==='free';
     gl.uniform1i(u.uFree,free?1:0);
+    gl.uniform1f(u.uDuration,this.data.duration);gl.uniform1f(u.uHbarOverM,HBAR_OVER_M);
+    // Bind both sampler units even on the free branch. A newly allocated probe
+    // attachment must never remain bound to a sampler in the active program.
+    this.bindTexture(this.correctionA,0,u.uCorrectionA);this.bindTexture(this.correctionB,1,u.uCorrectionB);
     if(free) {
-      gl.uniform2fv(u['uFreeCoefficients[0]'],Float32Array.from(this.data.coefficients));
-      gl.uniform1f(u.uFreeSpan,this.data.span);
+      gl.uniform4fv(u['uFreeCoefficients[0]'],Float32Array.from(this.data.coefficients));
+      gl.uniform1f(u.uFreeSpan,this.data.span);gl.uniform1f(u.uSpinAngle,this.data.spinAngle);
     } else {
-      this.bindTexture(this.waveParts,0,u.uWaveParts);this.bindTexture(this.currentParts,1,u.uCurrentParts);
+      gl.uniform4fv(u['uFixed[0]'],Float32Array.from(this.data.f));
+      gl.uniform4fv(u['uRotating[0]'],Float32Array.from(this.data.g));
     }
   }
   step(gate,target,end,dt,params) {
@@ -140,15 +150,21 @@ export class FlowRenderer {
     gl.bindVertexArray(this.segmentVaos[before]);gl.drawArraysInstanced(gl.TRIANGLES,0,6,this.count);
     gl.disable(gl.BLEND);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
-  render(canvas,params,active) {
+  render(canvas,params,active,waveTexture) {
     const gl=this.gl;gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);
     gl.enable(gl.BLEND);
     if(params.showTrails) {
       gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_COLOR);gl.bindVertexArray(this.emptyVao);
       gl.useProgram(this.composite.program);this.bindTexture(this.trailTextures[this.trailIndex],0,this.composite.uniforms.uTrail);
-      gl.uniform1f(this.composite.uniforms.uScale,this.trailScale);gl.drawArrays(gl.TRIANGLES,0,3);
+      gl.uniform1f(this.composite.uniforms.uScale,TRAIL_EXPOSURE*this.trailScale);gl.drawArrays(gl.TRIANGLES,0,3);
     }
     gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    if(params.showSpin) {
+      gl.bindVertexArray(this.emptyVao);gl.useProgram(this.spinGlyphs.program);
+      this.bindTexture(waveTexture,0,this.spinGlyphs.uniforms.uWave);
+      gl.uniform1i(this.spinGlyphs.uniforms.uSpinGrid,12);
+      gl.drawArraysInstanced(gl.TRIANGLES,0,6,144);
+    }
     if(params.showParticles) {
       gl.bindVertexArray(this.vaos[this.index]);gl.useProgram(this.points.program);
       const u=this.points.uniforms,dpr=canvas.width/canvas.clientWidth;
@@ -161,7 +177,7 @@ export class FlowRenderer {
       gl.bindVertexArray(this.emptyVao);gl.useProgram(this.arrows.program);const u=this.arrows.uniforms;
       this.fieldUniforms(u);
       gl.uniform1f(u.uProgress,active.progress);gl.uniform1f(u.uDuration,active.duration);
-      gl.uniform1f(u.uGain,params.currentGain);gl.uniform1i(u.uArrowGrid,params.arrowGrid);
+      gl.uniform1i(u.uCurrentMode,params.currentMode);gl.uniform1f(u.uGain,params.currentGain);gl.uniform1i(u.uArrowGrid,params.arrowGrid);
       gl.drawArraysInstanced(gl.TRIANGLES,0,6,params.arrowGrid**2);
     }
     gl.disable(gl.BLEND);
@@ -185,19 +201,26 @@ export class FlowRenderer {
       }
     }
     this.statsTime=this.elapsed;
-    this.stats={target,count:this.count,boxProbability:bins[target]/this.count,bins,invalid,failures,maxLag:lag,lagging,slowest};return this.stats;
+    this.stats={target,count:this.count,boxProbability:bins[target>>1]/this.count,bins,invalid,failures,maxLag:lag,lagging,slowest};return this.stats;
   }
   readField(progress=1) {
+    if(!this.data)return null;
     const gl=this.gl,wave=new Float32Array(4*this.grid**2),current=new Float32Array(wave.length);
-    if(this.data?.mode==='free') {
-      gl.disable(gl.BLEND);gl.bindVertexArray(this.emptyVao);gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);
-      gl.viewport(0,0,this.grid,this.grid);gl.useProgram(this.probe.program);const u=this.probe.uniforms;
-      this.fieldUniforms(u);gl.uniform1f(u.uProgress,progress);gl.uniform1f(u.uDuration,this.data.duration);
-      gl.uniform1f(u.uGridSize,this.grid);gl.drawArrays(gl.TRIANGLES,0,3);
+    // Separate probe attachments avoid framebuffer feedback and preserve correction textures.
+    if(!this.probeFbo){
+      this.probeFbo=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,this.probeFbo);
+      this.probeTextures=[0,1].map(i=>{
+        const tex=this.texture(this.grid,gl.RGBA32F,gl.FLOAT);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0+i,gl.TEXTURE_2D,tex,0);return tex;
+      });
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]);this.checkFramebuffer();
     }
-    gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);gl.readBuffer(gl.COLOR_ATTACHMENT0);
-    gl.readPixels(0,0,this.grid,this.grid,gl.RGBA,gl.FLOAT,wave);gl.readBuffer(gl.COLOR_ATTACHMENT1);
-    gl.readPixels(0,0,this.grid,this.grid,gl.RGBA,gl.FLOAT,current);gl.readBuffer(gl.COLOR_ATTACHMENT0);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
-    return {wave,current,grid:this.grid,mode:this.data?.mode,direction:1,duration:this.gate?.duration||1};
+    gl.disable(gl.BLEND);gl.bindVertexArray(this.emptyVao);gl.bindFramebuffer(gl.FRAMEBUFFER,this.probeFbo);
+    gl.viewport(0,0,this.grid,this.grid);gl.useProgram(this.probe.program);const u=this.probe.uniforms;
+    this.fieldUniforms(u);gl.uniform1f(u.uProgress,progress);gl.uniform1f(u.uGridSize,this.grid);gl.drawArrays(gl.TRIANGLES,0,3);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);gl.readPixels(0,0,this.grid,this.grid,gl.RGBA,gl.FLOAT,wave);
+    gl.readBuffer(gl.COLOR_ATTACHMENT1);gl.readPixels(0,0,this.grid,this.grid,gl.RGBA,gl.FLOAT,current);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    return {wave,current,grid:this.grid,mode:this.data.mode,duration:this.data.duration};
   }
 }

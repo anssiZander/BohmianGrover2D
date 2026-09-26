@@ -1,231 +1,165 @@
-# Grover Search 2D — MultiRegionFreeMixing
+# Grover with spin — SPINMultiRegionFree
 
-A single continuous 2D wave encodes 16 logical outcomes in a 4×4 arrangement.
-This branch uses exact free-box mixers and ideal mode-projector phase gates, with the original
-rainbow phase palette, dark blue panels, cyan grid, and crimson target outline.
-Conserved-current arrows and guided yellow particles with trails show the
-spatial probability transport. The display remains a single search view.
+A 32-state position-spin search, based on MultiRegionFreeMixing: 16 overlapping
+spatial packets, each with spin up and spin down. Exact free-box evolution and
+a uniform spin rotation perform mixing. Golden particles follow the full
+position current, including the nonuniform-spin contribution.
 
-## Run
+## Run and explore
 
-Serve this folder with VS Code Live Server, or:
+Serve this folder with VS Code Live Server, or run:
 
-```powershell
-python -m http.server 8835 --bind 127.0.0.1
-```
+    python -m http.server 8835 --bind 127.0.0.1
 
-Open `http://127.0.0.1:8835/`. A desktop browser with WebGL2 and floating-point
-render targets is required. No dependencies or build step are needed.
+Open http://127.0.0.1:8835/ in a desktop WebGL2 browser. No dependencies or build.
 
-## Controls and readouts
+- Click a cell in either grid to select its position. **Click the selected cell
+  again to flip its goal spin.** Moving to another cell keeps the chosen spin.
+  Selection resets the search and is locked during a running or paused gate.
+- Prepare, apply individual operations, or run the full four-iteration search.
+  Manual checkpoints and Pause freeze the simulation clock and trail history.
+- **Total · spin colors** shows total density, with cyan for positive z spin,
+  magenta for negative z spin, and violet for balanced z populations. Individual
+  up/down views use the original phase palette. A spinor has no single scalar
+  phase; the total view therefore does not assign one.
+- **Spin directions** draws local polarization: an oriented line for its
+  in-plane projection, dots/rings for the positive/negative normal component.
+- **Arrows** selects total current, transport current (convective plus any
+  phase-gate correction), or spin current. This only changes the arrows.
+  The particles always follow total current divided by total density, including
+  while their display is hidden. They have no permanent binary spin label.
+- Gold trails retain the parent's adjustable half-life, with lower display
+  exposure to keep the spin density visible beneath the added circulation.
+  Speed, Pause, recording, particle motion, and trail fading share one clock.
+- The 32 grid percentages and marked probability refer to joint logical modes.
+  **Inside goal box** includes both spins and overlapping packet tails.
+  Compare the particle fraction against this spatial probability.
+- Spin purity is the reduced spin density matrix's Tr(rho_spin^2). Values below
+  one indicate spin-position entanglement for this pure total state. The
+  existing effective Grover Bloch sphere describes the marked/unmarked search
+  subspace; it is not the local spin Bloch sphere.
 
-- Choose a goal with the 4×4 selection grid or click a box on the wave. Changing
-  the goal resets the search; target selection is locked during a running gate.
-- Use individual gate buttons or **Apply next operation** to hold at each
-  checkpoint. **Run full search** prepares once and executes three iterations.
-- **Pause**, **Reset**, and gate speed control the same gate clock. Space toggles
-  pause when a form control is not focused; R resets. Brightness and phase/grid
-  toggles affect only the display.
-- The circuit highlights the active gate. Its three iteration badges retain the
-  marked probabilities at the completed diffuser checkpoints.
-- The effective Bloch sphere follows the actual complex amplitudes. Drag it or
-  use its arrow keys to orbit; Home or Reset view restores the camera. Its gold
-  vector describes the normalized marked/unmarked projection with the prepared
-  state's phases. The weight
-  bar accounts for probability outside that subspace during individual gates.
-- **Start Recording** captures the wave canvas as WebM; panels are excluded.
-- **Current arrows**, **Particles**, and **Trails**, beneath the wave, toggle
-  independently. Hidden particles continue evolving. The arrows display current
-  strength on a compressed scale; particles move at current divided by density.
-- **Flow settings** adjusts arrow density/gain, dot size, trail length, and particle count.
-  Changing the count resets the search and is locked during a running gate.
-- **Trail length** sets the fading half-life (0.1–12 gate-time seconds, default
-  1.5). It can change during a gate without resetting the wave, particles, or
-  existing history. Faster playback advances trail fading on the same clock.
-  Trails use DoubleSlit2.0's soft stamps, additive floating-point accumulation,
-  exponential exposure, and screen blending, in the existing golden yellow.
-  Stamps sweep between integrated particle positions to keep paths connected.
-- **Particles inside goal box** is a finite-sample estimate of the spatial
-  probability. Compare it with **Inside goal box**, not the logical percentage.
+Labels are |x1 x0 y1 y0, spin>. Columns increase left to right, rows bottom to
+top. The upper-right cell is |1111>, lower-left |0000>.
 
-The labels use `|x₁x₀y₁y₀⟩`. Columns increase left to right and rows bottom to top.
-The upper-left box is `|0011⟩`, upper-right `|1111⟩`, lower-left `|0000⟩`, and
-lower-right `|1100⟩`. The selection grid has exactly the same spatial ordering.
+## State and gates
 
-The percentages on the grid are **logical-mode probabilities**. The diagnostic
-**Inside goal box** integrates the continuous spatial density over the selected
-quarter-by-quarter region. These differ because orthogonal packets have
-overlapping spatial tails. Neither the display grid nor the target tint changes
-the Hamiltonian or clips the wave into disconnected boxes.
+The spatial basis is unchanged:
 
-## Spatial encoding
+    u_n(x) = sqrt(2) sin(n pi x), n = 1,...,4
+    f_j(x) = sum_n T[j,n] u_n(x), j = 0,...,3
+    T[j,n] = sqrt(1/2) sin((j+1/2)n pi/4), n < 4
+    T[j,4] = (1/2) sin((j+1/2)pi)
+    phi_jk(x,y) = f_j(x) f_k(y)
 
-On the unit interval use normalized sine modes
-`u_n(x) = sqrt(2) sin(n pi x)`, `n = 1,2,3,4`.
-An orthogonal discrete sine transform constructs four localized packets:
+The two-component wave is a sum of these 16 orthonormal, hard-wall packets in
+each spin channel. The complex array stores [up.re, up.im, down.re, down.im]
+per spatial packet. Joint index q = 2*(4*x+y)+spin, with spin 0=up and 1=down.
 
-```text
-f_j(x) = sum_n T[j,n] u_n(x),                 j = 0,1,2,3
-T[j,n] = sqrt(2/4) sin((j+1/2)n pi/4),        n = 1,2,3
-T[j,4] = (1/sqrt(4)) sin((j+1/2)pi).
-phi_jk(x,y) = f_j(x) f_k(y).
-```
+    input = |0000,up>
+    A = U_box(T) tensor Ry(pi/2)
+    A_dagger = U_box(7T) tensor Ry(-pi/2)
+    U_box(t): b_nm -> exp[-i omega (n^2+m^2)t] b_nm
+    omega = pi/(4T), T = 2.4
+    Ry(theta) = exp(-i theta sigma_y/2)
 
-The packets are orthonormal, smooth, and zero at the outer walls. Each has its
-dominant peak in its labeled region. With two packets the same transform reduces
-to the original `(u_1 +/- u_2)/sqrt(2)` construction.
+The spatial inverse uses positive-time free motion through 7T, because
+U_box(8T)=I. The independent spin drive reverses and is spread over the full
+inverse interval. In Hamiltonian form H_spin = hbar*(theta_gate/T_gate)*sigma_y/2.
+This is an imposed spin-only drive; no orbital electromagnetic vector potential
+or spin-orbit coupling is included. The spatial spectrum and revival time are
+unchanged. Every intermediate state is evaluated from the exact propagator.
 
-The full wave is `psi(x,y,t) = sum_jk c_jk(t) phi_jk(x,y)`. It always lies in the
-specified 16-dimensional subspace. The initial state is `phi_00`, and preparation
-gives `|c_jk| = 1/4`, hence logical probability `1/16` in every mode. Equal logical
-probabilities do not imply perfectly flat spatial density.
+Each oracle/reference gate is the ideal joint-mode projector pulse:
 
-## Exact free-box mixing and forward waiting
+    U_q(p) = I + (exp(-i*pi*p)-1)|q><q|, 0 <= p <= 1
 
-During every mixing interval, the Hamiltonian is the ordinary hard-wall box:
+Only one complex spin coefficient rotates. The reference is |0000,up>.
+As in the parent, the kinetic Hamiltonian is not added during these nonlocal
+ideal pulses. Each lasts 1.6 gate-time seconds.
 
-```text
-H_free = -hbar^2/(2m) (d_x^2 + d_y^2)
-E_nm = E_1 (n^2+m^2),    E_1 = pi^2 hbar^2/(2mL^2)
-b_nm(t) = b_nm(0) exp[-i E_1 (n^2+m^2)t/hbar].
-```
+Prepare once, then repeat oracle -> A_dagger -> reference -> A four times.
+The full sequence takes 92 gate-time seconds at speed 1.
 
-The implementation transforms the logical coefficients to the sine basis,
-applies these exact energy phases, and transforms back. Both axes evolve
-simultaneously. It includes the common phase as well as relative phases, and
-uses the continuum spectrum, not finite-difference eigenvalues or RK4 wave
-stepping. No image blending or probability interpolation is used.
-
-Set `T = pi*hbar/(4*E_1)`. The first four one-axis eigenmodes then have phases
-`(z,-1,z,1)`, where `z = exp(-i*pi/4)`. In our packet basis:
-
-```text
-U_1D(T) = 1/2 [ z  -1   1   z ]
-               [ -1  z   z   1 ]
-               [  1  z   z  -1 ]
-               [  z  1  -1   z ]
-A = U_1D(T) tensor U_1D(T).
-```
-
-Every entry of A has magnitude 1/4, so preparation gives equal logical
-probabilities of 1/16, with definite relative phases. The prepared state is
-`s = A|0000>`, not the equal-real-amplitude state used by the Hadamard branch.
-
-The entire box spectrum revives at `T_rev = 2*pi*hbar/E_1 = 8T`. Therefore:
-
-```text
-A = U(T)
-A^dagger = U(7T), because U(7T) U(T) = U(8T) = I.
-```
-
-The inverse animation advances forward through all 7T under the same positive
-kinetic Hamiltonian. It is not a negative-time shortcut and is not sped up to
-fit one preparation interval. In playback units T = 2.4 seconds, the inverse
-lasts 16.8 seconds, and a complete search takes 69.6 seconds at speed 1.
-Changing the speed scales the common clock for all gates, particles, and trails.
-The 1.6-second oracle/reference pulses keep their existing duration.
-
-Oracle and reference operations remain the exact ideal pulses
-
-```text
-U_q(p) = I + (exp(-i*pi*p)-1) |q><q|.
-```
-
-Here `q = target` for the oracle and `q = 0` for the reference. The free
-Hamiltonian is not added during these ideal pulses. Preparation runs once,
-then each iteration is `oracle -> wait 7T -> reference -> wait T`.
-`A (I-2|0><0|) A^dagger` reflects about the actual prepared state, up to the
-usual global minus sign. Three iterations give these marked-mode probabilities:
-
-| Iterations | Target probability |
+| Completed iterations | Joint target probability |
 | --- | ---: |
-| 0 (prepared) | 6.25% |
-| 1 | 47.265625% |
-| 2 | 90.844727% |
-| 3 | 96.131897% |
+| 0, prepared | 3.125% |
+| 1 | 25.830078% |
+| 2 | 60.242462% |
+| 3 | 89.693654% |
+| 4 | 99.918232% |
 
-The effective Bloch sphere uses a phase-aligned marked vector and the
-normalized unmarked part of this same s. This keeps preparation and completed
-Grover iterations in the correct two-dimensional subspace. Intermediate
-individual gates can leave that subspace; the weight bar still shows this.
-The seven-times-longer inverse path is sampled more densely for its sphere
-trace, while the state arrow always uses the actual instantaneous amplitudes.
+## Full planar spin current
 
-## Probability current and particles
+During free-plus-spin-drive intervals:
 
-During free mixing, including the forward-wait inverse, the arrows show the
-ordinary current and particles follow the Bohmian guidance law:
+    rho = Psi_dagger Psi
+    s = (hbar/2) Psi_dagger sigma Psi / rho
+    j_P = (hbar/m) Im(Psi_dagger grad Psi) + (1/m) curl(rho*s)
+    v = j_P/rho
 
-```text
-j = (hbar/m) Im(conj(psi) grad psi)
-v = j / |psi|^2.
-```
+The actual implementation uses the planar components of this current:
 
-With a unit-length box and our clock, `E_1/hbar = pi/(4T)` and
-`hbar/m = 1/(2*pi*T)`. The GPU evaluates the exact 16-term sine sum, its spatial
-derivatives, and energy phases at every particle integration stage. This is
-ordinary free-box current, not an inverse-Laplacian substitute. It has zero
-normal wall flux and may have circulation. Wave coefficients evolve exactly;
-particle trajectories still have numerical integration error.
+    M_z = |psi_up|^2 - |psi_down|^2
+    j_spin = (hbar/2m) (partial_y M_z, -partial_x M_z)
+    hbar/m = 1/(2*pi*T)  [unit box]
 
-The ideal nonlocal oracle and reference pulses retain the previous chosen
-curl-free transport:
+Differentiating M_z includes both grad(rho) cross s and rho curl(s). The
+convective term uses full complex spinor gradients, so the spin-texture phase
+connection is already included; no additional Berry term should be added to it.
+Uniform spin rotation changes the spin current without changing rho pointwise.
+Spin circulation is divergence-free and can change trajectories even when the
+density is unchanged.
 
-```text
-rho = |psi|^2
-laplacian chi = -partial_t rho,  normal derivative of chi = 0 at the walls
-j = gradient chi,               v = j/rho.
-```
+This is a reduced planar guidance model. Three-component spin directions are
+shown, but no transverse position or transverse-confinement wavefunction is
+simulated. It does not claim every 3D Pauli trajectory stays in the plane.
 
-This preserves the phase-pulse density by the continuity equation. The
-Neumann solution fixes the current after choosing the curl-free rule; the
-nonlocal phase Hamiltonian does not uniquely specify these continuous paths.
-For these pulses only, `psi = F + exp(-i*pi*p)G`; their density derivative has
-cosine frequencies 0..8 in each axis. The finite Poisson sum is reconstructed
-once per pulse in 512x512 float textures. This is the same convention as the
-parent branch, based on
-[Struyve and Valentini, equations 5–12](https://arxiv.org/pdf/0808.0290), with
-reflecting walls.
+## Current during the nonlocal phase gates
 
-The same adaptive GPU integrator handles both currents, integrating
-`dx/ds = T_gate*j`, `dp/ds = rho`, with cubic dense output to hit the requested
-gate progress. It does not cap velocity, attract particles to the goal, or
-resample them during gates. Initial particles sample the input packet's Born
-density. There is no sign reversal of time or current in the inverse mixer.
+A local Pauli current alone does not conserve the density generated by an ideal
+mode-projector Hamiltonian. The chosen extension is:
 
-Pause and manual checkpoints freeze the wave, instantaneous arrows, positions,
-and trail history. This is an inspection hold, not continued physical free
-evolution between operations. The recording clock advances all layers together.
+    j_total = j_P + grad(u)
+    laplacian(u) = -partial_t(rho) - div(j_P)
+    partial_normal(u) = 0 at the hard walls
 
-## Implementation and verification
+This preserves the Pauli current's divergence-free circulation and adds the
+gradient correction required by continuity. It is a specified generalized
+guidance law, not a unique local physical implementation of the oracle.
+It intentionally differs from the parent's purely gradient phase-gate current.
 
-- `multiregion-core.js`: pure complex-amplitude dynamics, spatial basis,
-  probability integrals, Bloch projection, and checkpointed clock.
-- `main.js`: controls, circuit synchronization, WebGL2 resources, and recording.
-- `shaders/mode_wave.frag`: reconstructs the complex wave on a 512×512 RGBA32F
-  GPU texture from its sine coefficients. Only 16 complex amplitudes evolve on
-  the CPU. `shaders/multiregion_render.frag` renders phase and density.
-- `grover-geometry.js`: the interactive sphere, driven by those same amplitudes.
-- `probability-flow.js`: exact density-source/Poisson coefficients and Born
-  sampling. `flow-renderer.js` and the `flow_*` shaders: GPU field reconstruction,
-  adaptive particle integration, free/phase currents, and fading trails. The free
-  field probe reads back the same analytic GPU current used by the particles.
+For Psi=F+exp(-i*pi*p)G, the correction contains constant, cos(pi*p), and
+sin(pi*p) time terms and cosine spatial frequencies 0 through 8. Their exact
+coefficients are computed once per pulse. The GPU reconstructs correction
+fields on a 512x512 float grid and samples them bilinearly. The wave and all
+spinor gradients are evaluated analytically from 16 sine products per channel.
 
-Legacy wave solvers remain unloaded. The original particle fragment shader and
-arrow fragment shader are reused to preserve their color and edge treatment.
+The adaptive GPU integrator follows dx/ds=T_gate*j_total, dp/ds=rho with
+cubic dense output. It has no velocity cap, goal attraction, or density
+resampling during gates. Wave evolution is exact within the finite modal
+subspace; trajectory integration and sampled correction fields have numerical
+error. The CPU current and wall-flux tests check continuity independently.
 
-```powershell
-node tests/static-check.mjs
-node --test tests/multiregion.test.mjs
-node --test tests/flow.test.mjs
-```
+## Verification and files
 
-For reproducible browser/GPU checks, open `/tests/browser-check.html` on the same
-local server. It loads the production page and compares GPU texture readbacks
-against an independent dense matrix-exponential reference. See `VERIFICATION.md`
-for measured results and visual checks.
-`/tests/flow-browser-check.html` additionally checks the GPU current, particle
-region counts and 8×8 spatial histograms, every target, pause, visibility, and
-the recording clock.
-`/tests/trail-browser-check.html` checks GPU trail accumulation/fading, length
-changes without disturbing the state, pause/reset, and recording exposure.
+Run:
+
+    node tests/static-check.mjs
+    node --test tests/multiregion.test.mjs tests/flow.test.mjs
+
+Browser fixtures load the production app:
+
+- tests/browser-check.html: actual RGBA spinor readbacks, independent 32x32
+  complex-matrix propagation, circuit/sphere state, spin selection, and clocks.
+- tests/flow-browser-check.html: GPU total/spin current, 4,000-particle spatial
+  distributions, 8x8 histograms, both goal spins, a 16,000-particle run, and
+  display/clock independence.
+- tests/trail-browser-check.html: inherited GPU trail decay and recording.
+
+See VERIFICATION.md for measured results. Core dynamics and spin diagnostics
+live in multiregion-core.js; probability-flow.js defines the current and phase
+correction. flow-renderer.js and shaders/flow_sample.glsl share the current
+between particles, arrows, and GPU probes. The spinor texture packs its four
+real components in RGBA. main.js coordinates both grids, display views, and
+the existing recording bridge.

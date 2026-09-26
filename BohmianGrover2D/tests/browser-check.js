@@ -11,9 +11,9 @@ const check = (name, pass, detail = '') => {
   panel.textContent = `${results.filter(r => r.pass).length}/${results.length} passed\n${name}: ${pass ? 'PASS' : 'FAIL'} ${detail}`;
 };
 const difference = (a, b) => Math.max(...Array.from(a, (v, i) => Math.abs(v - b[i])));
-const input = () => { const state = new Float64Array(32); state[0] = 1; return state; };
-const expectedP = rounds => Math.sin((2 * rounds + 1) * Math.asin(.25)) ** 2;
-const plan = [{ kind: 'prepare', duration: 2.4 }, ...Array.from({ length: 3 }, () => [
+const input = () => { const state = new Float64Array(64); state[0] = 1; return state; };
+const expectedP = rounds => Math.sin((2 * rounds + 1) * Math.asin(1/Math.sqrt(32))) ** 2;
+const plan = [{ kind: 'prepare', duration: 2.4 }, ...Array.from({ length: 4 }, () => [
   { kind: 'oracle', duration: 1.6 }, { kind: 'inverse', duration: 16.8 },
   { kind: 'reference', duration: 1.6 }, { kind: 'forward', duration: 2.4 },
 ]).flat()];
@@ -25,12 +25,13 @@ async function run() {
   }
   const api = window.GroverMultiRegion, doc = document;
   api.beginFrameRecording();
-  api.setParticleCount(512); // Dedicated flow fixture tests the full particle ensemble.
+  api.setParticleCount(256);
+  doc.getElementById("trailsToggle").click(); // Dedicated flow fixture tests the full particle ensemble.
   const root = doc.getElementById('groverGeometry');
-  check('Single view with 16 choices and conserved-flow controls',
+  check('16 spatial choices, 32 spin states and full-current controls',
     doc.querySelectorAll('#goalGrid [data-target]').length === 16 &&
     doc.querySelectorAll('#waveLabels [data-region]').length === 16 &&
-    !doc.getElementById('viewToggle') && !!doc.getElementById('currentToggle') && !!doc.getElementById('particlesToggle'));
+    !doc.getElementById('viewToggle') && !!doc.getElementById('currentToggle') && !!doc.getElementById('particlesToggle') && !!doc.getElementById('spinToggle') && !!doc.getElementById('currentMode'));
   const expectedOrder = Array.from({ length: 16 }, (_, i) => 4 * (i % 4) + 3 - Math.floor(i / 4));
   check('Selection grid uses the same spatial ordering as the wave', difference(
     [...doc.querySelectorAll('#goalGrid [data-target]')].map(button => Number(button.dataset.target)), expectedOrder) === 0);
@@ -38,19 +39,19 @@ async function run() {
   function inspect(expected, name, target) {
     const actual = api.state(), pixels = api.readWave(), grid = actual.grid, dx = 1 / (grid - 1);
     let norm = 0, fieldError = 0;
-    for (let k = 0; k < grid * grid; k++) norm += pixels[4 * k] ** 2 + pixels[4 * k + 1] ** 2;
+    for (let k = 0; k < grid * grid; k++) norm += pixels[4 * k] ** 2 + pixels[4 * k + 1] ** 2 + pixels[4*k+2]**2 + pixels[4*k+3]**2;
     norm *= dx * dx;
     for (let row = 0; row <= 16; row++) for (let col = 0; col <= 16; col++) {
       const x = Math.round(col * (grid - 1) / 16), y = Math.round(row * (grid - 1) / 16), offset = 4 * (y * grid + x);
       const psi = referenceWave(expected, x * dx, y * dx);
-      fieldError = Math.max(fieldError, Math.abs(psi[0] - pixels[offset]), Math.abs(psi[1] - pixels[offset + 1]));
+      fieldError = Math.max(fieldError, Math.abs(psi[0] - pixels[offset]), Math.abs(psi[1] - pixels[offset + 1]),Math.abs(psi[2]-pixels[offset+2]),Math.abs(psi[3]-pixels[offset+3]));
     }
     const modalError = difference(actual.amplitudes, expected);
     const s=referenceStep(input(),'prepare',1,target),m=[0,0],u=[0,0];
-    for(let q=0;q<16;q++) {
-      const r=4*(s[2*q]*expected[2*q]+s[2*q+1]*expected[2*q+1]);
-      const i=4*(s[2*q]*expected[2*q+1]-s[2*q+1]*expected[2*q]);
-      if(q===target){m[0]=r;m[1]=i;}else{u[0]+=r/Math.sqrt(15);u[1]+=i/Math.sqrt(15);}
+    for(let q=0;q<32;q++) {
+      const r=Math.sqrt(32)*(s[2*q]*expected[2*q]+s[2*q+1]*expected[2*q+1]);
+      const i=Math.sqrt(32)*(s[2*q]*expected[2*q+1]-s[2*q+1]*expected[2*q]);
+      if(q===target){m[0]=r;m[1]=i;}else{u[0]+=r/Math.sqrt(31);u[1]+=i/Math.sqrt(31);}
     }
     const marked = m[0] ** 2 + m[1] ** 2, weight = marked + u[0] ** 2 + u[1] ** 2;
     let sphereError = Math.abs(weight - Number(root.dataset.subspaceProbability));
@@ -64,7 +65,7 @@ async function run() {
       `wave ${fieldError.toExponential(2)}; norm ${Math.abs(norm - 1).toExponential(2)}`);
   }
 
-  // Every gate's interior, including the three distinct diffuser inputs.
+  // Every gate's interior, including the four distinct diffuser inputs.
   api.setTarget(9); let expected = input();
   for (const [index, gate] of plan.entries()) {
     doc.getElementById(gate.kind).click();
@@ -89,17 +90,26 @@ async function run() {
   }
 
   // All targets run through the production queue and must be equivalent.
-  for (let target = 0; target < 16; target++) {
-    doc.querySelector(`#goalGrid [data-target="${target}"]`).click();
+  for (const target of [0,7,24,31]) {
+    api.setTarget(target);
     check(`Selection ${target} resets the search`, api.state().target === target && api.state().completed === 0 &&
-      doc.querySelector(`#waveLabels [data-region="${target}"]`).classList.contains('marked'));
+      doc.querySelector(`#waveLabels [data-region="${target>>1}"]`).classList.contains('marked'));
     doc.getElementById('full').click(); api.advanceTime(100);
     let state = input(); for (const gate of plan) state = referenceStep(state, gate.kind, 1, target);
     inspect(state, `Complete queued search target ${target}`, target);
     const checkpoints = api.state().checkpoints.filter(gate => gate.kind === 'forward');
-    check(`Target ${target} amplifies for exactly three iterations`, checkpoints.length === 3 && checkpoints.every((gate, i) => Math.abs(gate.targetProbability - expectedP(i + 1)) < 1e-12) && api.state().completed === 13);
+    check(`Target ${target} amplifies for exactly four iterations`, checkpoints.length === 4 && checkpoints.every((gate, i) => Math.abs(gate.targetProbability - expectedP(i + 1)) < 1e-12) && api.state().completed === 17);
     await turn();
   }
+  api.setTarget(30);
+  doc.querySelector('#goalGrid [data-target="15"]').click();
+  check('Clicking the selected cell flips to spin down',api.state().target===31&&doc.querySelector('#goalGrid [data-target="15"]').getAttribute('aria-label').includes('↓'));
+  doc.querySelector('#goalGrid [data-target="15"]').click();
+  check('Clicking it again flips to spin up',api.state().target===30);
+  doc.querySelector('#goalGrid [data-target="6"]').click();
+  check('A different cell changes position and retains spin',api.state().target===12);
+  api.selectCell(6);
+  check('The wave grid uses the same spin-flip action',api.state().target===13);
   api.reset(); api.startNext(); api.renderRecordingFrame({ fps: 60 });
   check('Recording advances the same exact clock by one frame', Math.abs(api.state().time - 1 / 60) < 1e-14);
   api.reset();

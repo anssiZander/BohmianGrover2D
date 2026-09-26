@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PACKET_TRANSFORM, GATES, MIX_TIME, REVIVAL_TIME, PREPARED_STATE, sineCoefficients, basisState, evolveMixer, evolveGate, phasePulse,
+import { PACKET_TRANSFORM, GATES, spinSummary, evolveFree, rotateSpin, MIX_TIME, REVIVAL_TIME, PREPARED_STATE, sineCoefficients, basisState, evolveMixer, evolveGate, phasePulse,
   probabilities, normSquared, axisPacket, waveAt, boxProbability, projectGroverState,
   effectiveBlochState, SearchSimulation, expectedProbability } from '../multiregion-core.js';
-import { referenceStep, referenceWave, generator } from './reference-math.js';
+import { referenceStep, referenceWave, generator, derivative } from './reference-math.js';
 
 const error = (a, b) => Math.max(...Array.from(a, (value, i) => Math.abs(value - b[i])));
 let maxReferenceError = 0, maxNormError = 0;
@@ -27,22 +27,22 @@ test('localized packets are orthonormal, hard-walled, and concentrated in their 
 test('free preparation is balanced and forward waiting implements the exact inverse', () => {
   assert.equal(GATES[2].duration,7*MIX_TIME);
   assert.equal(REVIVAL_TIME,8*MIX_TIME);
-  for (let q = 0; q < 16; q++) {
+  for (let q = 0; q < 32; q++) {
     const state = basisState(q);
     assert.ok(error(evolveMixer(state,8),state)<1e-14);
     assert.ok(error(evolveGate(evolveMixer(state,1),'inverse',1,0),state)<1e-14);
-    assert.ok(error(evolveGate(state,'inverse',.3,0),evolveMixer(state,2.1))<1e-14);
+    assert.ok(error(evolveGate(state,'inverse',.3,0),rotateSpin(evolveFree(state,2.1),-.3*Math.PI/2))<1e-13);
     assert.ok(error(evolveGate(state,'inverse',.3,0),evolveMixer(state,-.3))>.1);
     assert.ok(error(evolveMixer(evolveMixer(state, .371), -.371), state) < 1e-14);
-    for (const p of probabilities(evolveMixer(state,1))) assert.ok(Math.abs(p-1/16)<1e-14);
+    for (const p of probabilities(evolveMixer(state,1))) assert.ok(Math.abs(p-1/32)<1e-14);
     const before=sineCoefficients(state),after=sineCoefficients(evolveMixer(state,.391));
-    for(let k=0;k<32;k+=2)assert.ok(Math.abs(before[k]**2+before[k+1]**2-after[k]**2-after[k+1]**2)<1e-14);
+    for(let k=0;k<64;k+=4)assert.ok(Math.abs(before.slice(k,k+4).reduce((s,v)=>s+v*v,0)-after.slice(k,k+4).reduce((s,v)=>s+v*v,0))<1e-14);
   }
-  for (const p of probabilities(evolveMixer(basisState(), 1))) assert.ok(Math.abs(p - 1 / 16) < 1e-14);
+  for (const p of probabilities(evolveMixer(basisState(), 1))) assert.ok(Math.abs(p - 1 / 32) < 1e-14);
 });
 
-test('every continuous gate agrees with an independent matrix exponential for all 16 targets', () => {
-  for (let target = 0; target < 16; target++) {
+test('every continuous gate agrees with an independent matrix exponential for all 32 targets', () => {
+  for (let target = 0; target < 32; target++) {
     let actual = basisState(), expected = basisState();
     for (const gate of GATES) {
       for (let sample = 0; sample <= 8; sample++) {
@@ -56,22 +56,18 @@ test('every continuous gate agrees with an independent matrix exponential for al
       expected = referenceStep(expected, gate.kind, 1, target);
       if (gate.kind === 'forward') assert.ok(Math.abs(probabilities(actual)[target] - expectedProbability(gate.iteration)) < 1e-13);
     }
-    assert.ok(Math.abs(probabilities(actual)[target] - 0.9613189697265625) < 1e-13);
+    assert.ok(Math.abs(probabilities(actual)[target] - 0.9991823155433) < 1e-13);
   }
 });
 
 test('every gate obeys its Schrodinger equation, including positive-time inverse waiting', () => {
-  let state = Float64Array.from({ length: 32 }, (_, i) => Math.sin(1.7 * i + .3));
+  let state = Float64Array.from({ length: 64 }, (_, i) => Math.sin(1.7 * i + .3));
   state = state.map(value => value / Math.sqrt(normSquared(state)));
   for (const kind of ['prepare', 'oracle', 'inverse', 'reference', 'forward']) {
     const p = .37, epsilon = 1e-7, value = evolveGate(state, kind, p, 9);
     const plus = evolveGate(state, kind, p + epsilon, 9), minus = evolveGate(state, kind, p - epsilon, 9);
-    const k = generator(kind, 9), derivative = new Float64Array(32);
-    for (let q = 0; q < 16; q++) for (let r = 0; r < 16; r++) {
-      derivative[2 * q] += k[q][r] * value[2 * r + 1];
-      derivative[2 * q + 1] -= k[q][r] * value[2 * r];
-    }
-    assert.ok(error(plus.map((v, i) => (v - minus[i]) / (2 * epsilon)), derivative) < 2e-7);
+    const expectedDerivative = derivative(value,generator(kind,9));
+    assert.ok(error(plus.map((v, i) => (v - minus[i]) / (2 * epsilon)), expectedDerivative) < 2e-7);
   }
   const mid = evolveMixer(basisState(), .5), endpoint = evolveMixer(basisState(),1);
   const linear = endpoint.map((value, i) => .5 * (value + basisState()[i]));
@@ -81,7 +77,7 @@ test('every gate obeys its Schrodinger equation, including positive-time inverse
 
 test('phase gates preserve every logical probability throughout their pulse', () => {
   const state = evolveMixer(basisState(), .43), before = probabilities(state);
-  for (let target = 0; target < 16; target++) for (let p = 0; p <= 1; p += .125) {
+  for (let target = 0; target < 32; target++) for (let p = 0; p <= 1; p += .125) {
     assert.ok(error(probabilities(phasePulse(state, target, p)), before) < 1e-14);
   }
 });
@@ -95,7 +91,7 @@ test('geometrical box probabilities integrate the spatial wave and partition uni
     let numerical = 0; const steps = 96;
     for (let x = 0; x < steps; x++) for (let y = 0; y < steps; y++) {
       const psi = referenceWave(state, ((q >> 2) + (x + .5) / steps) / 4, ((q & 3) + (y + .5) / steps) / 4);
-      numerical += (psi[0] ** 2 + psi[1] ** 2) / (16 * steps * steps);
+      numerical += (psi.reduce((sum,v)=>sum+v*v,0)) / (16 * steps * steps);
     }
     assert.ok(Math.abs(analytic - numerical) < 2e-5);
   }
@@ -107,7 +103,7 @@ test('clock partitions, checkpoints, target locking, pause and reset preserve th
   a.runFull(); b.runFull(); a.advance(100);
   while (b.active) b.advance(.017);
   assert.ok(error(a.amplitudes, b.amplitudes) < 1e-13);
-  assert.equal(a.completed, 13); assert.equal(a.checkpoints.length, 13);
+  assert.equal(a.completed, 17); assert.equal(a.checkpoints.length, 17);
   b.reset(); b.startNext(); b.advance(.7); b.paused = true;
   const paused = b.snapshot(); b.advance(100); assert.deepEqual(b.snapshot(), paused);
   assert.equal(b.setTarget(5), false); b.paused = false; b.advance(100);
@@ -118,12 +114,12 @@ test('clock partitions, checkpoints, target locking, pause and reset preserve th
 });
 
 test('Bloch projection retains unit length, accounts for outside weight, and ignores global phase', () => {
-  for(let target=0;target<16;target++)assert.ok(Math.abs(projectGroverState(PREPARED_STATE,target).bloch.weight-1)<1e-14);
+  for(let target=0;target<32;target++)assert.ok(Math.abs(projectGroverState(PREPARED_STATE,target).bloch.weight-1)<1e-14);
   assert.equal(effectiveBlochState([0, 0], [0, 0]).vector, null);
   for (const [unmarked, expected] of [[[1, 0], [1, 0, 0]], [[0, 1], [0, 1, 0]], [[0, -1], [0, -1, 0]]]) {
     assert.ok(error(effectiveBlochState([1, 0], unmarked).vector, expected) < 1e-14);
   }
-  for (let target = 0; target < 16; target++) {
+  for (let target = 0; target < 32; target++) {
     let state = basisState();
     for (const gate of GATES) {
       for (const p of [0, .25, .5, .75, 1]) {
@@ -142,5 +138,13 @@ test('Bloch projection retains unit length, accounts for outside weight, and ign
 });
 
 test('report numerical precision', () => {
-  console.log(`1872 continuous states; maximum matrix-exponential error ${maxReferenceError.toExponential(3)}, norm error ${maxNormError.toExponential(3)}.`);
+  console.log(`4896 continuous spinor states; maximum matrix-exponential error ${maxReferenceError.toExponential(3)}, norm error ${maxNormError.toExponential(3)}.`);
+});
+
+test('joint oracle creates spin-position entanglement and spin probabilities add to the spatial density',()=>{
+  const balanced=evolveMixer(basisState(),1),entangled=phasePulse(balanced,31,.73);
+  assert.ok(Math.abs(spinSummary(balanced).purity-1)<1e-13);
+  assert.ok(spinSummary(entangled).purity<.99);
+  for(let q=0;q<16;q++)assert.ok(Math.abs(boxProbability(entangled,q,0)+boxProbability(entangled,q,1)-boxProbability(entangled,q))<1e-13);
+  assert.ok(Math.abs(spinSummary(entangled).up+spinSummary(entangled).down-1)<1e-13);
 });

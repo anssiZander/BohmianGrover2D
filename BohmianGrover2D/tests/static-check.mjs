@@ -16,6 +16,6 @@ for (const shader of shaders) {
   if ([...source].filter(c => c === '{').length !== [...source].filter(c => c === '}').length) throw new Error(`${shader}: unbalanced braces`);
 }
 for (const [, path] of html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)) await read(path);
-if (!recording.includes('window.BohmianGrover2D') || !recording.includes('grover-multiregion-4x4-')) throw new Error('Missing recording bridge or filename');
+if (!recording.includes('window.BohmianGrover2D') || !recording.includes('grover-spin-4x4-')) throw new Error('Missing recording bridge or filename');
 console.log(`${required.length} DOM references and all sphere nodes present; HTML IDs unique.`);
 console.log(`${shaders.length} WebGL2 shader sources and all local page assets present; recording bridge intact.`);

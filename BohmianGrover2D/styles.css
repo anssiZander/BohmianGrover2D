@@ -34,3 +34,16 @@ button:hover:not(:disabled){background:rgba(86,150,232,.25);border-color:#5e9ed0
 @media(min-width:1600px){#wrap{grid-template-columns:320px minmax(0,1fr) 380px;gap:20px}}
 @media(max-width:1100px){html,body{overflow:auto}#wrap{height:auto;min-height:100%;grid-template-columns:270px minmax(0,1fr);grid-template-rows:minmax(680px,calc(100vh - 24px)) auto}#rightColumn{grid-column:1/-1;display:grid;grid-template-columns:300px minmax(0,1fr);align-items:start}#info{max-height:720px}.groverGeometry svg{max-width:360px}}
 @media(max-width:650px){#wrap{display:flex;flex-direction:column;padding:9px}#ui{max-height:none}#stage{height:calc(100vw + 110px);min-height:380px}#rightColumn{display:flex}#goalGrid button{padding:8px}#info{max-height:none}.waveCell{padding:5px}.waveCell b{font-size:9px;bottom:5px;right:5px}#waveHeader h1{font-size:17px}}
+
+/* Spin channels keep the established blue panels, cyan grid and golden trails. */
+select{font:inherit;min-width:0;max-width:100%;color:#e8f2ff;background:#0a203b;border:1px solid #3f6388;border-radius:6px;padding:5px}
+.row select{flex:1}select:focus-visible{outline:2px solid #69d9ff;outline-offset:2px}
+.spinUp,#goalGrid button b.spinUp{color:#75e4ff}.spinDown,#goalGrid button b.spinDown{color:#ff91ca}
+#goalGrid button b.goalSpin{color:#fff3b0;font-weight:800;text-decoration:underline;text-underline-offset:3px}
+#goalGrid button.selected{border-width:2px;padding-top:7px;padding-bottom:9px}
+.selectionHelp{color:#c4d9ef;margin:6px 0 0}.waveCell b span{display:block;line-height:1.55}
+.waveCell b span.goalSpin{color:#fff2a4;font-weight:800}.waveCell .cellLabel{font-weight:700}
+.spinMetrics{display:flex;gap:14px;justify-content:space-between;margin-top:12px;font-size:12px}
+.spinMetrics b{font-variant-numeric:tabular-nums}.flowToggles{flex-wrap:wrap}
+.flowToggles #spinToggle[aria-pressed=true]{color:#e9b7ff;border-color:#b883d8}
+@media(max-width:650px){#stage{height:calc(100vw + 190px)}#waveFooter{min-height:130px}.targetBadge{padding:5px}.targetBadge span{font-size:9px}}
