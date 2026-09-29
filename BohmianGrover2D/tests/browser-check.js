@@ -138,9 +138,11 @@ async function run() {
   const phaseFrame=frame();doc.getElementById('phaseToggle').click();const densityFrame=frame();
   check('Phase and amplitude/density palettes both render, without changing the state',phaseFrame.some((v,i)=>v!==densityFrame[i]) && JSON.stringify(api.state())===beforeView && difference(beforeParticles,api.readParticles())===0 && doc.getElementById('phaseLegendPanel').hidden);
   api.setTarget(0);
-  check('Hidden markers leave no target tint in either palette',frame().every((v,i)=>v===densityFrame[i]));
+  const densityAfterTarget=frame();
+  check('Hidden markers leave no target tint in either palette',densityAfterTarget.every((v,i)=>v===densityFrame[i]), `changed channels ${densityAfterTarget.reduce((n,v,i)=>n+(v!==densityFrame[i]),0)}; max byte error ${densityAfterTarget.reduce((n,v,i)=>Math.max(n,Math.abs(v-densityFrame[i])),0)}`);
   doc.getElementById('phaseToggle').click();
-  check('Phase palette restores exactly with markers hidden',frame().every((v,i)=>v===phaseFrame[i]) && !doc.getElementById('phaseLegendPanel').hidden);
+  const restoredPhase=frame();
+  check('Phase palette restores exactly with markers hidden',restoredPhase.every((v,i)=>v===phaseFrame[i]) && !doc.getElementById('phaseLegendPanel').hidden, `changed channels ${restoredPhase.reduce((n,v,i)=>n+(v!==phaseFrame[i]),0)}; max byte error ${restoredPhase.reduce((n,v,i)=>Math.max(n,Math.abs(v-phaseFrame[i])),0)}`);
   api.setTarget(5);doc.getElementById('markersToggle').click();
   check('Markers restore independently of the grid toggle',difference(green,border(8))===0 && difference(red,border(2))===0 && doc.getElementById('waveLabels').hidden);
   for (const id of ['currentToggle','particlesToggle','trailsToggle','gridToggle']) doc.getElementById(id).click();
