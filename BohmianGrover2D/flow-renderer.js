@@ -1,4 +1,4 @@
-import { gateFlow, sampleInitialParticles } from './probability-flow.js';
+import { gateFlow, sampleInitialParticles } from './probability-flow.js?v=20260929-ui1';
 
 export class FlowRenderer {
   constructor(gl, grid, loadShader, createProgram) {

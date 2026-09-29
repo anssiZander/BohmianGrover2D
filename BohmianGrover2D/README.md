@@ -18,6 +18,17 @@ python -m http.server 8835 --bind 127.0.0.1
 Open `http://127.0.0.1:8835/`. A desktop browser with WebGL2 and floating-point
 render targets is required. No dependencies or build step are needed.
 
+## GitHub Pages updates
+
+Page assets and all module imports share a `?v=20260929-ui1` release suffix.
+Shader requests inherit it from `main.js`. This prevents a browser from pairing
+new HTML with cached scripts or shaders from a previous release.
+Before publishing changed assets, replace this release value across `index.html`
+and the JavaScript imports with a new unique value, and update this note.
+Run `node tests/static-check.mjs` to check that their versions agree.
+GitHub Pages can also cache HTML for several minutes; after a deployment, a
+hard refresh (Ctrl+Shift+R) retrieves the new page if an existing tab is stale.
+
 ## Controls and readouts
 
 - Choose the initial state and goal directly on the main wave. The compact

@@ -1,4 +1,4 @@
-import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js';
+import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js?v=20260929-ui1';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 const gateNames = { input: 'Input', prepare: 'Prepare H', oracle: 'Oracle Oω', inverse: 'Inverse H†', reference: 'Reference Sᵢ', forward: 'Forward H' };

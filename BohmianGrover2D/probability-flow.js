@@ -1,4 +1,4 @@
-import { STATE_COUNT, hadamard, sineCoefficients, PACKET_TRANSFORM } from './multiregion-core.js';
+import { STATE_COUNT, hadamard, sineCoefficients, PACKET_TRANSFORM } from './multiregion-core.js?v=20260929-ui1';
 
 // Products of our four sine modes contain only cosine frequencies 0..8.
 // Solve the Neumann Poisson equation spectrally, with zero constant potential.

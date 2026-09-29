@@ -1,7 +1,7 @@
 import { STATE_COUNT, ITERATIONS, LABELS, GATES, SearchSimulation, probabilities,
-  sineCoefficients, boxProbability } from './multiregion-core.js';
-import { createGroverGeometry } from './grover-geometry.js';
-import { FlowRenderer } from './flow-renderer.js';
+  sineCoefficients, boxProbability } from './multiregion-core.js?v=20260929-ui1';
+import { createGroverGeometry } from './grover-geometry.js?v=20260929-ui1';
+import { FlowRenderer } from './flow-renderer.js?v=20260929-ui1';
 
 const GRID = 512;
 const simulation = new SearchSimulation(15);
@@ -263,7 +263,10 @@ function createProgram(vertex, fragment, uniforms, varyings) {
   return { program, uniforms: Object.fromEntries(uniforms.map(name => [name, gl.getUniformLocation(program, name)])) };
 }
 async function loadShader(name) {
-  const response = await fetch(`./shaders/${name}`);
+  // Keep fetched shaders on the same release as the module that compiles them.
+  const url = new URL(`./shaders/${name}`, import.meta.url);
+  url.search = new URL(import.meta.url).search;
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`Unable to load ${name}: ${response.status}`);
   return response.text();
 }
