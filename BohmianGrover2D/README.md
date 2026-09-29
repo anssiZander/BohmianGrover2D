@@ -18,7 +18,7 @@ Open http://127.0.0.1:8835/ in a desktop WebGL2 browser. No dependencies or buil
   Changing it resets the wave, particles, trails, and search checkpoints,
   including during playback. It keeps both chosen spins and clamps the initial
   and goal positions into the new grid. The default remains 4x4.
-- **Choose both states on the main wave**, following the guide above it.
+- **Choose both states on the main wave**, following the compact guide beside the title.
   First click to select the initial position (green), then use **Next: choose
   goal** and click to select the goal (red). Click the currently selected cell
   again to flip that state's spin; moving to another cell keeps its spin.

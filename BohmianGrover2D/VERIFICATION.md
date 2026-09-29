@@ -1,5 +1,16 @@
 # Verification — SPINMultiRegionFree
 
+## Guide in the title margin — 2026-09-29
+
+Moved the guide into the existing title header and removed its separate row
+from the layout calculation. Compact state badges sit below the title, with
+the guide alongside them. In the current 1280x720 browser view, the main grid
+increased from about 448 to 519 pixels square (about 34% more area). The grid
+remains 519 pixels across initial selection, goal selection and the ready
+state. Guide navigation was checked in the production browser; static DOM,
+shader-asset and JavaScript syntax checks pass. Physics is unchanged; the
+full numerical/GPU suites were not repeated for this layout-only adjustment.
+
 ## Guided canvas selection and optional markers — 2026-09-29
 
 The sidebar grid is removed. A guide above the main wave selects the initial

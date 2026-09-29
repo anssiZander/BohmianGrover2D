@@ -43,11 +43,12 @@
   </aside>
 
   <main id="stage">
-    <header id="waveHeader"><div><span class="eyebrow" id="stateCountLabel">16 SPATIAL MODES × SPIN ½ · 32 STATES</span><h1>Grover with spin</h1></div><div class="stateBadges"><div class="initialBadge"><span id="waveInitial">INITIAL |0,0,↑⟩</span></div><div class="targetBadge"><span id="waveTarget">MARKED |3,3,↑⟩</span><b id="waveProbability">0.0%</b></div></div></header>
+    <header id="waveHeader"><div class="waveHeading"><span class="eyebrow" id="stateCountLabel">16 SPATIAL MODES × SPIN ½ · 32 STATES</span><h1>Grover with spin</h1></div><div class="stateBadges"><div class="initialBadge"><span id="waveInitial">INITIAL |0,0,↑⟩</span></div><div class="targetBadge"><span id="waveTarget">MARKED |3,3,↑⟩</span><b id="waveProbability">0.0%</b></div></div>
     <div id="selectionGuide" data-step="initial">
-      <div class="selectionMessage" role="status" aria-live="polite"><strong id="selectionTitle">1 · Choose the initial state (green)</strong><p id="selectionHint">Click a square; click it again to flip spin. Or run now with the current selections.</p></div>
+      <div class="selectionMessage" role="status" aria-live="polite"><strong id="selectionTitle">1 · Initial state (green)</strong><p id="selectionHint">Click a square; click again to flip spin. Or run with the current choices.</p></div>
       <div class="selectionActions"><button id="selectionBack" type="button" hidden>Back: initial</button><button id="selectionNext" type="button">Next: choose goal</button></div>
     </div>
+    </header>
     <div id="waveArea"><canvas id="c" aria-label="Two-component spinor wave: 16 spatial regions, each with spin up and down"></canvas><div id="waveLabels" aria-hidden="true"></div><div id="loading">Preparing the wave…</div><div id="error" role="alert" hidden></div></div>
     <footer id="waveFooter"><p id="gateDescription"></p><div class="flowToggles" role="group" aria-label="Wave and probability flow overlays"><button id="markersToggle" aria-pressed="true" title="Show or hide the green initial and red goal markers">Initial / goal markers</button><button id="spinToggle" aria-pressed="true">Spin directions</button><button id="currentToggle" aria-pressed="true">Current arrows</button><button id="particlesToggle" aria-pressed="true">Particles</button><button id="trailsToggle" aria-pressed="true">Trails</button></div><span id="waveLegend">Color = local spin: cyan ↑ · magenta ↓ · violet balanced. Gold dots follow the total current.</span></footer>
   </main>

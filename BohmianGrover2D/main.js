@@ -137,13 +137,13 @@ function syncUi() {
     lastSelectionKey = selectionKey;
     dom.selectionGuide.dataset.step = selectionStep;
     dom.selectionTitle.textContent = busy ? 'Selections held during the search' : {
-      initial: '1 · Choose the initial state (green)',
-      goal: '2 · Choose the goal state (red)',
+      initial: '1 · Initial state (green)',
+      goal: '2 · Goal state (red)',
       ready: 'Initial and goal states are ready',
     }[selectionStep];
     dom.selectionHint.textContent = busy ? 'Reset to choose different states. You can hide the markers below.' : {
-      initial: 'Click a square; click it again to flip spin. Then select “Next: choose goal”. Or run now with the current selections.',
-      goal: 'Click a square; click it again to flip spin. Select “Done” when ready, or run now with the current selections.',
+      initial: 'Click a square; click again to flip spin. Or run with the current choices.',
+      goal: 'Click a square; click again to flip spin. Then select Done, or run now.',
       ready: 'Run the search, or select “Choose states” to pick a new initial state and goal.',
     }[selectionStep];
     dom.selectionBack.hidden = selectionStep !== 'goal';
@@ -283,13 +283,13 @@ function installEvents() {
     if (event.key.toLowerCase() === 'r') reset();
   });
   const layoutObserver = new ResizeObserver(layout);
-  for (const element of [dom.stage, dom.waveHeader, dom.selectionGuide, dom.waveFooter]) layoutObserver.observe(element);
+  for (const element of [dom.stage, dom.waveHeader, dom.waveFooter]) layoutObserver.observe(element);
   window.addEventListener('resize', layout);
 }
 
 function layout() {
   const side = Math.max(160, Math.floor(Math.min(dom.stage.clientWidth,
-    dom.stage.clientHeight - dom.waveHeader.offsetHeight - dom.selectionGuide.offsetHeight - dom.waveFooter.offsetHeight - 36)));
+    dom.stage.clientHeight - dom.waveHeader.offsetHeight - dom.waveFooter.offsetHeight - 24)));
   dom.waveArea.style.width = `${side}px`; dom.waveArea.style.height = `${side}px`;
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   const pixels = Math.round(side * dpr);
