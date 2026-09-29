@@ -21,10 +21,10 @@ function crossDensity(a, b) {
   return { re, im };
 }
 
-export function gateFlow(start, kind, target, duration) {
+export function gateFlow(start, kind, target, duration, initial = 0) {
   const fixed = Float64Array.from(start), rotating = new Float64Array(2*STATE_COUNT);
   if (kind === 'oracle' || kind === 'reference') {
-    const q = kind === 'oracle' ? target : 0;
+    const q = kind === 'oracle' ? target : initial;
     rotating[2*q] = fixed[2*q]; rotating[2*q+1] = fixed[2*q+1];
     fixed[2*q] = 0; fixed[2*q+1] = 0;
   } else {
@@ -75,27 +75,31 @@ export function flowAt(flow, x, y, progress) {
 
 // Inverse CDF of the initial 1D packet. Stratification and a deterministic
 // shuffle avoid an artificial spatial lattice without resampling during gates.
-function initialCdf(x) {
+function initialCdf(x, packet) {
   let sum = 0;
   for (let n = 1; n <= 4; n++) for (let m = 1; m <= 4; m++) {
     const integral = n === m ? x-Math.sin(2*n*Math.PI*x)/(2*n*Math.PI)
       : Math.sin((n-m)*Math.PI*x)/((n-m)*Math.PI)-Math.sin((n+m)*Math.PI*x)/((n+m)*Math.PI);
-    sum += PACKET_TRANSFORM[0][n-1]*PACKET_TRANSFORM[0][m-1]*integral;
+    sum += PACKET_TRANSFORM[packet][n-1]*PACKET_TRANSFORM[packet][m-1]*integral;
   }
   return sum;
 }
-export function sampleInitialParticles(count, seed = 73991) {
+export function sampleInitialParticles(count, seed = 73991, initial = 0) {
   let randomState = seed >>> 0;
   const random = () => { randomState ^= randomState << 13; randomState ^= randomState >>> 17; randomState ^= randomState << 5; return (randomState >>> 0)/4294967296; };
-  const quantiles = new Float32Array(count), order = Uint32Array.from({length:count},(_,i)=>i);
+  const quantilesX = new Float32Array(count), quantilesY = (initial >> 2) === (initial & 3) ? quantilesX : new Float32Array(count), order = Uint32Array.from({length:count},(_,i)=>i);
+  const axes = [[initial >> 2, quantilesX]];
+  if (quantilesX !== quantilesY) axes.push([initial & 3, quantilesY]);
   for (let i = 0; i < count; i++) {
     const u = (i+.15+.7*random())/count;
-    let lo = 0, hi = 1;
-    for (let k = 0; k < 34; k++) { const mid = .5*(lo+hi); if (initialCdf(mid) < u) lo = mid; else hi = mid; }
-    quantiles[i] = .5*(lo+hi);
+    for (const [packet, quantiles] of axes) {
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 34; k++) { const mid = .5*(lo+hi); if (initialCdf(mid, packet) < u) lo = mid; else hi = mid; }
+      quantiles[i] = .5*(lo+hi);
+    }
   }
   for (let i = count-1; i > 0; i--) { const j = Math.floor(random()*(i+1)); [order[i],order[j]] = [order[j],order[i]]; }
   const states = new Float32Array(4*count);
-  for (let i = 0; i < count; i++) { states[4*i] = quantiles[i]; states[4*i+1] = quantiles[order[i]]; }
+  for (let i = 0; i < count; i++) { states[4*i] = quantilesX[i]; states[4*i+1] = quantilesY[order[i]]; }
   return states;
 }

@@ -1,5 +1,45 @@
 # Verification — MultiRegion 4×4
 
+## Guided main-grid selection and compact layout — 2026-09-29
+
+Ported the compact title-margin guide, main-screen initial/goal selection,
+green/red markers, optional marker overlay and side-by-side Next/Full controls.
+The sidebar selection grid and individual gate buttons are removed. This branch
+keeps its fixed 4x4, 16-state model and original phase/density palettes. Defaults
+remain input |0000> and goal |1111>, immediately runnable without manual choices.
+
+The chosen initial packet feeds wave initialization, both particle sampling
+axes, the reference projector/current, circuit bits and the Bloch search basis.
+The latter includes the Hadamard signs of H|i>. The existing Hadamard generator,
+inverse evolution, curl-free current, gate durations and three iterations are
+preserved. Reset retains both choices; active and paused gates lock selection.
+
+**20/20 numerical tests pass**, including five new tests covering all 256
+input/goal pairs and amplification checkpoints, all inputs at continuous gate
+interiors against independent dense-matrix exponentials, finite-difference
+continuity, 4,000-particle Born sampling for every input, and reset/locking.
+
+Actual production browser verification on NVIDIA GeForce RTX 4070 Ti SUPER,
+ANGLE / D3D11, using the 512x512 float wave texture:
+
+- **Wave/UI: 172/172**, including 81 GPU wave readbacks, displaced inputs,
+  guided selection, defaults, coincident outlines, both color modes and
+  pixel comparisons confirming hidden markers leave no target tint.
+  Maximum wave error 3.274e-6; norm error 4.573e-7; modal amplitude error
+  3.634e-15; Bloch/readout error 6.662e-15. View toggles preserve state and particles.
+- **Flow: 224/224**. Every gate/current field is checked from input 9, goal 6;
+  complete runs cover every input and target, with a 16,000-particle run using
+  input=goal=15. Maximum current error 3.674e-7; density error 1.379e-5;
+  region sampling error 1.479 percentage points; 8x8 histogram TV 4.769%.
+  Failed/invalid particle steps: 0. Maximum clock lag 5.552e-16.
+- **Trails: 11/11**, covering decay, pause, reset, unchanged trajectories,
+  and recording exposure. All WebGL error codes: 0.
+
+Static checks pass for 60 DOM references and 15 shader/include sources.
+Browser inspection confirms the compact header and both color views;
+the preview console reports no warnings or errors. Browser fixture closing-tag
+strings were split to remain compatible with VS Code Live Server injection.
+
 ## DoubleSlit-style trails and length control — 2026-09-24
 
 Replaced alpha-painted RGBA8 trails with soft swept stamps accumulated in

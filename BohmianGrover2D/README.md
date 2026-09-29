@@ -2,7 +2,8 @@
 
 A single continuous 2D wave encodes 16 logical outcomes in a 4×4 arrangement.
 This branch uses exact continuous unitary mode gates, displayed with the original
-rainbow phase palette, dark blue panels, cyan grid, and crimson target outline.
+rainbow phase and density palettes, dark blue panels, cyan grid, green initial
+outline and crimson target outline.
 Conserved-current arrows and guided yellow particles with trails show the
 spatial probability transport. The display remains a single search view.
 
@@ -19,10 +20,24 @@ render targets is required. No dependencies or build step are needed.
 
 ## Controls and readouts
 
-- Choose a goal with the 4×4 selection grid or click a box on the wave. Changing
-  the goal resets the search; target selection is locked during a running gate.
-- Use individual gate buttons or **Apply next operation** to hold at each
-  checkpoint. **Run full search** prepares once and executes three iterations.
+- Choose the initial state and goal directly on the main wave. The compact
+  guide shares the title margin, leaving the main grid large. Click an initial
+  square, select **Next: choose goal**, click a goal square, and select **Done**.
+  **Back: initial** revisits the input; **Choose states** starts selection again.
+  The sidebar selector has been removed. The grid remains fixed at 4x4.
+- Run immediately to use the existing defaults, input `|0000⟩` and goal
+  `|1111⟩`. **Apply next operation** and **Run full search** sit side by side;
+  individual gate buttons have been removed. A full search runs three iterations.
+  Both choices survive Reset and full runs. Selecting a state resets the search,
+  and selection is locked during running or paused gates.
+- **Initial / goal markers**, below the wave, hides both colored outlines,
+  cell tints, gate flashes and START/GOAL tags. It is independent of the grid
+  toggle and also affects recordings. Coincident choices show a green inner
+  outline and a red outer outline. Hiding markers does not change the state,
+  particles, current or clock.
+- **Phase colors** retains both original palettes: ON shows phase hue with
+  density brightness; OFF uses the density-color palette. The legend follows
+  this display setting; the wave and trajectories are unchanged.
 - **Pause**, **Reset**, and gate speed control the same gate clock. Space toggles
   pause when a form control is not focused; R resets. Brightness and phase/grid
   toggles affect only the display.
@@ -30,7 +45,8 @@ render targets is required. No dependencies or build step are needed.
   marked probabilities at the completed diffuser checkpoints.
 - The effective Bloch sphere follows the actual complex amplitudes. Drag it or
   use its arrow keys to orbit; Home or Reset view restores the camera. Its gold
-  vector describes the normalized marked/equal-unmarked projection. The weight
+  vector describes the normalized marked/unmarked projection, using the phases
+  of the prepared state `H|i⟩` for the selected input. The weight
   bar accounts for probability outside that subspace during individual gates.
 - **Start Recording** captures the wave canvas as WebM; panels are excluded.
 - **Current arrows**, **Particles**, and **Trails**, beneath the wave, toggle
@@ -49,7 +65,7 @@ render targets is required. No dependencies or build step are needed.
 
 The labels use `|x₁x₀y₁y₀⟩`. Columns increase left to right and rows bottom to top.
 The upper-left box is `|0011⟩`, upper-right `|1111⟩`, lower-left `|0000⟩`, and
-lower-right `|1100⟩`. The selection grid has exactly the same spatial ordering.
+lower-right `|1100⟩`.
 
 The percentages on the grid are **logical-mode probabilities**. The diagnostic
 **Inside goal box** integrates the continuous spatial density over the selected
@@ -75,9 +91,12 @@ dominant peak in its labeled region. With two packets the same transform reduces
 to the original `(u_1 +/- u_2)/sqrt(2)` construction.
 
 The full wave is `psi(x,y,t) = sum_jk c_jk(t) phi_jk(x,y)`. It always lies in the
-specified 16-dimensional subspace. The initial state is `phi_00`, and preparation
-gives `c_jk = 1/4`, hence logical probability `1/16` in every mode. Equal logical
-probabilities do not imply perfectly flat spatial density.
+specified 16-dimensional subspace. The initial state is the chosen packet
+`|i⟩` (default `phi_00`). Preparation gives `H|i⟩`, with coefficients
+`c_q = (-1)^popcount(q & i)/4`, hence logical probability `1/16` in every mode.
+For the default input all coefficients are positive; other inputs have
+Hadamard signs, visible in the phase view. Equal logical probabilities do not
+imply perfectly flat spatial density.
 
 ## Exact gate dynamics
 
@@ -103,10 +122,10 @@ Oracle and reference pulses are also exact at every intermediate time:
 U_q(p) = I + (exp(-i pi p) - 1) |q><q|.
 ```
 
-The oracle uses `q = target`; the reference uses `q = 0`. Preparation runs once,
+The oracle uses `q = target`; the reference uses `q = initial`. Preparation runs once,
 then each iteration runs `oracle -> H^dagger -> reference -> H`. The implemented
-diffuser `H (I-2|0><0|) H^dagger` differs from the conventional `2|s><s|-I` only
-by a global minus sign. The full spatial phase is displayed, including this sign.
+diffuser `H (I-2|i><i|) H^dagger` differs from the conventional `2|s><s|-I` only
+by a global minus sign, with `|s⟩ = H|i⟩`. The full spatial phase is displayed, including this sign.
 
 For one marked state among 16, the logical target probability after `k` iterations
 is `sin^2((2k+1) asin(1/4))`:
@@ -201,6 +220,7 @@ arrow fragment shader are reused to preserve their color and edge treatment.
 node tests/static-check.mjs
 node --test tests/multiregion.test.mjs
 node --test tests/flow.test.mjs
+node --test tests/initial-state.test.mjs
 ```
 
 For reproducible browser/GPU checks, open `/tests/browser-check.html` on the same

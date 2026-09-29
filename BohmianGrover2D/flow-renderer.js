@@ -73,16 +73,16 @@ export class FlowRenderer {
     for(const fbo of this.trailFbos) {gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
-  reset(count=this.count) {
-    this.count=count;this.gate=null;this.data=null;this.index=0;this.elapsed=0;this.statsTime=-Infinity;
-    const gl=this.gl,states=sampleInitialParticles(count);
+  reset(count=this.count,initial=this.initial??0) {
+    this.count=count;this.initial=initial;this.gate=null;this.data=null;this.index=0;this.elapsed=0;this.statsTime=-Infinity;
+    const gl=this.gl,states=sampleInitialParticles(count,73991,initial);
     for(const buffer of this.buffers) {gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,states,gl.DYNAMIC_COPY);}
     gl.bindBuffer(gl.ARRAY_BUFFER,null);this.clearTrails();
   }
   prepare(gate,target) {
     if(this.gate===gate||!gate) return;
     this.gate=gate;this.newGate=true;
-    this.data=gateFlow(gate.startAmplitudes,gate.kind,target,gate.duration);
+    this.data=gateFlow(gate.startAmplitudes,gate.kind,target,gate.duration,gate.initial??this.initial);
     const gl=this.gl,u=this.basis.uniforms;
     gl.disable(gl.BLEND);gl.bindVertexArray(this.emptyVao);gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);
     gl.viewport(0,0,this.grid,this.grid);gl.useProgram(this.basis.program);

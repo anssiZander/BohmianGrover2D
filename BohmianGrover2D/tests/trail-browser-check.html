@@ -1,8 +1,11 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"/><title>Trail GPU verification</title><link rel="icon" href="data:,"/>
-<body style="background:#061124;color:#d4e6ff">Loading trail checks…
+<html lang="en"><meta charset="utf-8"/><title>MultiRegion browser verification</title><link rel="icon" href="data:,"/>
+<body style="background:#061124;color:#d4e6ff;font:13px monospace">Loading the production page…
 <script type="module">
-const source=await (await fetch('../index.html')).text();
-const html=source.replace('<head>','<head><base href="../"/>').replace('</body>','<script type="module" src="./tests/trail-browser-check.js"><'+'/script></body>');
-document.open();document.write(html);document.close();
+const response = await fetch('../index.html'), source = await response.text();
+// Split the closing tag so Live Server cannot inject its client into this string.
+const bodyEnd = '<' + '/body>';
+const html = source.replace('<head>', '<head><base href="../"/>')
+  .replace(bodyEnd, '<script type="module" src="./tests/trail-browser-check.js"><' + '/script>' + bodyEnd);
+document.open(); document.write(html); document.close();
 </script></body></html>

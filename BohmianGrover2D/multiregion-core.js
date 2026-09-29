@@ -9,7 +9,7 @@ export const GATES = Object.freeze([
   ...Array.from({ length: ITERATIONS }, (_, i) => [
     { kind: 'oracle', name: 'Oracle phase', symbol: 'Oω', iteration: i + 1, duration: 1.6 },
     { kind: 'inverse', name: 'Inverse mixer', symbol: 'H†', iteration: i + 1, duration: 2.4 },
-    { kind: 'reference', name: 'Reference phase', symbol: 'S₀', iteration: i + 1, duration: 1.6 },
+    { kind: 'reference', name: 'Reference phase', symbol: 'Sᵢ', iteration: i + 1, duration: 1.6 },
     { kind: 'forward', name: 'Forward mixer', symbol: 'H', iteration: i + 1, duration: 2.4 },
   ]).flat(),
 ].map(Object.freeze));
@@ -68,11 +68,11 @@ export function phasePulse(state, target, p) {
   return out;
 }
 
-export function evolveGate(state, kind, progress, target) {
+export function evolveGate(state, kind, progress, target, initial = 0) {
   if (kind === 'prepare' || kind === 'forward') return evolveMixer(state, progress);
   if (kind === 'inverse') return evolveMixer(state, -progress);
   if (kind === 'oracle') return phasePulse(state, target, progress);
-  if (kind === 'reference') return phasePulse(state, 0, progress);
+  if (kind === 'reference') return phasePulse(state, initial, progress);
   throw new Error(`Unknown gate: ${kind}`);
 }
 
@@ -136,20 +136,25 @@ export function effectiveBlochState(marked, unmarked) {
   return { vector: [2 * (mr * ur + mi * ui) / weight, 2 * (mr * ui - mi * ur) / weight, (m - u) / weight],
     weight: Math.min(1, weight), conditionalMarked: m / weight };
 }
-export function projectGroverState(state, target) {
-  const marked = [state[2 * target], state[2 * target + 1]], unmarked = [0, 0];
+// Use the phases of H|initial> to define the marked/unmarked search basis.
+// A nonzero input has a balanced distribution with Hadamard signs, not all +.
+const PREPARED_STATES = Array.from({ length: STATE_COUNT }, (_, q) => hadamard(basisState(q)));
+export function projectGroverState(state, target, initial = 0) {
+  const prepared = PREPARED_STATES[initial], markedSign = 4 * prepared[2 * target];
+  const marked = [markedSign * state[2 * target], markedSign * state[2 * target + 1]], unmarked = [0, 0];
   for (let q = 0; q < STATE_COUNT; q++) if (q !== target) {
-    unmarked[0] += state[2 * q] / Math.sqrt(STATE_COUNT - 1);
-    unmarked[1] += state[2 * q + 1] / Math.sqrt(STATE_COUNT - 1);
+    const sign = 4 * prepared[2 * q];
+    unmarked[0] += sign * state[2 * q] / Math.sqrt(STATE_COUNT - 1);
+    unmarked[1] += sign * state[2 * q + 1] / Math.sqrt(STATE_COUNT - 1);
   }
   const bloch = effectiveBlochState(marked, unmarked);
   return { bloch, targetProbability: marked[0] ** 2 + marked[1] ** 2, outsideProbability: Math.max(0, 1 - bloch.weight) };
 }
 
 export class SearchSimulation {
-  constructor(target = 15) { this.target = target; this.reset(); }
+  constructor(target = 15, initial = 0) { this.target = target; this.initial = initial; this.reset(); }
   reset() {
-    this.amplitudes = basisState(); this.completed = 0; this.active = null; this.last = null;
+    this.amplitudes = basisState(this.initial); this.completed = 0; this.active = null; this.last = null;
     this.paused = false; this.autoplay = false; this.time = 0; this.revision = (this.revision || 0) + 1;
     this.checkpoints = [];
   }
@@ -157,10 +162,15 @@ export class SearchSimulation {
     if (this.active || !Number.isInteger(target) || target < 0 || target >= STATE_COUNT) return false;
     this.target = target; this.reset(); return true;
   }
+  setInitial(initial) {
+    if (this.active || !Number.isInteger(initial) || initial < 0 || initial >= STATE_COUNT) return false;
+    this.initial = initial; this.reset(); return true;
+  }
   startNext() {
     if (this.active || this.completed >= GATES.length) return false;
     this.active = { ...GATES[this.completed], index: this.completed, elapsed: 0, progress: 0,
-      startAmplitudes: Float64Array.from(this.amplitudes) };
+      initial: this.initial, startAmplitudes: Float64Array.from(this.amplitudes) };
+    if (this.active.kind === 'reference') this.active.name = `Reference phase |${LABELS[this.initial]}⟩`;
     return true;
   }
   runFull() { if (this.active) return false; this.reset(); this.autoplay = true; return this.startNext(); }
@@ -172,7 +182,7 @@ export class SearchSimulation {
       gate.elapsed += step; this.time += step; remaining -= step;
       gate.progress = Math.min(1, gate.elapsed / gate.duration);
       if (gate.duration - gate.elapsed < 1e-10) gate.progress = 1;
-      this.amplitudes = evolveGate(gate.startAmplitudes, gate.kind, gate.progress, this.target);
+      this.amplitudes = evolveGate(gate.startAmplitudes, gate.kind, gate.progress, this.target, this.initial);
       if (gate.progress < 1) break;
       this.last = gate; this.active = null; this.completed++;
       this.checkpoints.push({ step: this.completed, kind: gate.kind, iteration: gate.iteration,
@@ -183,7 +193,7 @@ export class SearchSimulation {
   }
   snapshot() {
     const gate = this.active || this.last;
-    return { target: this.target, completed: this.completed, busy: !!this.active, paused: this.paused,
+    return { target: this.target, initial: this.initial, completed: this.completed, busy: !!this.active, paused: this.paused,
       time: this.time, kind: gate?.kind || 'input', iteration: gate?.iteration || 0,
       progress: this.active?.progress ?? (this.last ? 1 : 0), norm: normSquared(this.amplitudes),
       probabilities: Array.from(probabilities(this.amplitudes)), amplitudes: Array.from(this.amplitudes),

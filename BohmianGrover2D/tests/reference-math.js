@@ -1,15 +1,15 @@
 // Independent dense-matrix reference. Production uses a fast Hadamard transform
 // and a closed-form eigenspace propagator; this uses a matrix exponential series.
 const N = 16;
-export function generator(kind, target) {
+export function generator(kind, target, initial = 0) {
   return Array.from({ length: N }, (_, row) => Float64Array.from({ length: N }, (_, col) => {
-    if (kind === 'oracle' || kind === 'reference') return row === col && row === (kind === 'oracle' ? target : 0) ? Math.PI : 0;
+    if (kind === 'oracle' || kind === 'reference') return row === col && row === (kind === 'oracle' ? target : initial) ? Math.PI : 0;
     const parity = (row & col).toString(2).replaceAll('0', '').length % 2;
     return (kind === 'inverse' ? -1 : 1) * Math.PI / 2 * ((row === col ? 1 : 0) - (parity ? -1 : 1) / 4);
   }));
 }
-export function referenceStep(state, kind, p, target) {
-  const matrix = generator(kind, target), sum = Float64Array.from(state);
+export function referenceStep(state, kind, p, target, initial = 0) {
+  const matrix = generator(kind, target, initial), sum = Float64Array.from(state);
   let term = Float64Array.from(state);
   for (let order = 1; order <= 48; order++) {
     const next = new Float64Array(2 * N);

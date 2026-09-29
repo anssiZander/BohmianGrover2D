@@ -12,18 +12,10 @@
   <aside id="ui" class="panel">
     <div class="head"><h3>Grover Search · 4×4</h3><button id="minui" class="mini" aria-expanded="true" aria-label="Collapse controls">−</button></div>
     <div id="uibody">
-      <div class="section">Choose the goal box</div>
-      <div id="goalGrid" role="group" aria-label="Select one of 16 marked modes in the same layout as the wave"></div>
-      <p id="targetSummary" class="note"></p>
       <div class="section">Gates</div>
       <div class="ops">
-        <button id="prepare">Prepare balanced state</button>
-        <button id="oracle">Oracle · |1111⟩</button>
-        <button id="inverse">Inverse mixer H†</button>
-        <button id="reference">Reference phase |0000⟩</button>
-        <button id="forward">Forward mixer H</button>
         <button id="next">Apply next operation</button>
-        <button id="full" class="full">Run full search · 3 iterations</button>
+        <button id="full" class="full">Run full search</button>
       </div>
       <div id="progressTrack"><div id="progressBar"></div></div>
       <div id="stageStatus" class="status" role="status"></div>
@@ -45,9 +37,14 @@
   </aside>
 
   <main id="stage">
-    <header id="waveHeader"><div><span class="eyebrow">ONE 2D WAVE · 16 LOGICAL MODES</span><h1>Amplitude amplification</h1></div><div class="targetBadge"><span id="waveTarget">MARKED |1111⟩</span><b id="waveProbability">0.0%</b></div></header>
+    <header id="waveHeader"><div class="waveHeading"><span class="eyebrow">ONE 2D WAVE · 16 LOGICAL MODES</span><h1>Grover search</h1></div><div class="stateBadges"><div class="initialBadge"><span id="waveInitial">INITIAL |0000⟩</span></div><div class="targetBadge"><span id="waveTarget">MARKED |1111⟩</span><b id="waveProbability">0.0%</b></div></div>
+    <div id="selectionGuide" data-step="initial">
+      <div class="selectionMessage" role="status" aria-live="polite"><strong id="selectionTitle">1 · Initial state (green)</strong><p id="selectionHint">Click an initial square, then choose the goal. Or run with the current choices.</p></div>
+      <div class="selectionActions"><button id="selectionBack" type="button" hidden>Back: initial</button><button id="selectionNext" type="button">Next: choose goal</button></div>
+    </div>
+    </header>
     <div id="waveArea"><canvas id="c" aria-label="Continuous two-dimensional probability wave with 16 outcome regions"></canvas><div id="waveLabels" aria-hidden="true"></div><div id="loading">Preparing the wave…</div><div id="error" role="alert" hidden></div></div>
-    <footer id="waveFooter"><p id="gateDescription"></p><div class="flowToggles" role="group" aria-label="Probability flow overlays"><button id="currentToggle" aria-pressed="true">Current arrows</button><button id="particlesToggle" aria-pressed="true">Particles</button><button id="trailsToggle" aria-pressed="true">Trails</button></div><span>Hue = phase · arrows = probability current · dots follow j / ρ</span></footer>
+    <footer id="waveFooter"><p id="gateDescription"></p><div class="flowToggles" role="group" aria-label="Wave and probability flow overlays"><button id="markersToggle" aria-pressed="true" title="Show or hide the green initial and red goal markers">Initial / goal markers</button><button id="currentToggle" aria-pressed="true">Current arrows</button><button id="particlesToggle" aria-pressed="true">Particles</button><button id="trailsToggle" aria-pressed="true">Trails</button></div><span id="waveLegend">Hue = phase · brightness = density · dots follow j / ρ</span></footer>
   </main>
 
   <aside id="rightColumn">
@@ -63,9 +60,9 @@
           <g class="circuitGate future" data-circuit-kind="prepare"><rect class="gateBox" x="112" y="23" width="82" height="114" rx="9"/><text class="gateText" x="153" y="87">H</text><text class="gateCaption" x="153" y="155">PREPARE</text><text class="gateTick" x="179" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="oracle"><rect class="gateBox" x="231" y="23" width="82" height="114" rx="9"/><text class="gateText" x="272" y="87">Oω</text><text class="gateCaption" x="272" y="155">ORACLE</text><text class="gateTick" x="298" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text class="gateText" x="408" y="87">H†</text><text class="gateCaption" x="408" y="155">INVERSE</text><text class="gateTick" x="434" y="39">✓</text></g>
-<g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">S₀</text><text class="gateCaption" x="527" y="155">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
+<g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">Sᵢ</text><text class="gateCaption" x="527" y="155">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="forward"><rect class="gateBox" x="605" y="23" width="82" height="114" rx="9"/><text class="gateText" x="646" y="87">H</text><text class="gateCaption" x="646" y="155">FORWARD</text><text class="gateTick" x="672" y="39">✓</text></g>
-          <path class="diffuserBrace" d="M355 166v6h344v-6"/><text class="diffuserLabel" x="527" y="186">DIFFUSER D = H S₀ H†</text>
+          <path class="diffuserBrace" d="M355 166v6h344v-6"/><text class="diffuserLabel" x="527" y="186">DIFFUSER D = H Sᵢ H†</text>
           <g id="circuitReadout" class="readoutNode"><circle cx="777" cy="80" r="33"/><path d="M756 89a24 24 0 0 1 42 0M777 86l15-18"/><text x="777" y="155">ANSWER</text></g>
         </svg>
         <div id="circuitMeta"><span id="circuitTarget">w = |1111⟩</span><span id="circuitStatus">Ready</span></div>
@@ -121,8 +118,8 @@
         </figcaption>
       </figure>
     </details>
-      <div class="phaseLegend" aria-label="Phase color legend"><div class="phaseWheel" role="img" aria-label="Rainbow phase wheel"></div><div class="phaseLabels"><b>Phase hue</b><br>red: 0<br>yellow-green: +π/2<br>cyan: ±π<br>violet-blue: −π/2</div></div>
-      <details class="theory"><summary>About the wave and gates</summary><p>Each box labels an orthogonal logical mode built from four sine eigenmodes along each axis. Packets overlap, so the probability of a logical mode differs from probability inside its geometrical box.</p><p>The bit order is |x₁x₀y₁y₀⟩. Columns increase left to right; rows increase bottom to top. The initial mode is |0000⟩.</p><div class="math">H = H<sub>Had</sub><sup>⊗4</sup><br>ℋ<sub>mix</sub> = πℏ(I − H)/(2T)</div><p>Preparation and forward mixing use exp(−iℋ<sub>mix</sub>t/ℏ); inverse mixing uses the opposite sign. Phase gates use exact mode-projector exponentials. These are ideal mode operations, rather than free-box propagation. The wave evolves unitarily at every instant.</p><p>Three standard Grover iterations give 96.1319% marked-mode probability. All gates and the wave hold still at checkpoints and when paused.</p><div class="math">j = ∇χ &nbsp; · &nbsp; ∇²χ = −∂ρ/∂t<br>Particle velocity: v = j / ρ</div><p>The arrows show a conserved spatial current derived from the exact density change, with zero flow through the outer walls. We choose the curl-free solution. This is a generalized probability-transport model; the nonlocal gate Hamiltonian does not uniquely determine continuous particle paths.</p><p>Particle fractions sample the spatial density and should track “Inside goal box.” Arrow length indicates current strength, with a compressed display scale. Pause freezes the instantaneous arrows and all trajectories for inspection.</p></details>
+      <div id="phaseLegendPanel" class="phaseLegend" aria-label="Phase color legend"><div class="phaseWheel" role="img" aria-label="Rainbow phase wheel"></div><div class="phaseLabels"><b>Phase hue</b><br>red: 0<br>yellow-green: +π/2<br>cyan: ±π<br>violet-blue: −π/2</div></div>
+      <details class="theory"><summary>About the wave and gates</summary><p>Each box labels an orthogonal logical mode built from four sine eigenmodes along each axis. Packets overlap, so the probability of a logical mode differs from probability inside its geometrical box.</p><p>The bit order is |x₁x₀y₁y₀⟩. Columns increase left to right; rows increase bottom to top. Choose the initial mode |i⟩ and the goal on the main wave using the guide beside the title. The default initial mode is |0000⟩. The reference phase acts on the chosen |i⟩, so the diffuser reflects about H|i⟩.</p><div class="math">H = H<sub>Had</sub><sup>⊗4</sup><br>ℋ<sub>mix</sub> = πℏ(I − H)/(2T)</div><p>Preparation and forward mixing use exp(−iℋ<sub>mix</sub>t/ℏ); inverse mixing uses the opposite sign. Phase gates use exact mode-projector exponentials. These are ideal mode operations, rather than free-box propagation. The wave evolves unitarily at every instant.</p><p>Three standard Grover iterations give 96.1319% marked-mode probability. All gates and the wave hold still at checkpoints and when paused.</p><div class="math">j = ∇χ &nbsp; · &nbsp; ∇²χ = −∂ρ/∂t<br>Particle velocity: v = j / ρ</div><p>The arrows show a conserved spatial current derived from the exact density change, with zero flow through the outer walls. We choose the curl-free solution. This is a generalized probability-transport model; the nonlocal gate Hamiltonian does not uniquely determine continuous particle paths.</p><p>Particle fractions sample the spatial density and should track “Inside goal box.” Arrow length indicates current strength, with a compressed display scale. Pause freezes the instantaneous arrows and all trajectories for inspection.</p></details>
     </section>
   </aside>
 </div>

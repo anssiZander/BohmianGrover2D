@@ -53,9 +53,9 @@ async function run() {
     maxCurrentError=Math.max(maxCurrentError,currentError);maxDensityError=Math.max(maxDensityError,densityError);
     check(`${name}: actual GPU current and density`,currentError<2e-5&&densityError<1e-4,`j ${currentError.toExponential(2)}, rho ${densityError.toExponential(2)}`);
   }
-  api.setTarget(6);distribution('Initial',true);
+  api.setInitial(9);api.setTarget(6);distribution('Initial 9',true);
   for(const [index,gate] of GATES.entries()) {
-    const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,6,gate.duration);
+    const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,6,gate.duration,9);
     api.startNext();let prior=0;
     for(const p of [.25,.5,.75,1]) {
       await advance((p-prior)*gate.duration);prior=p;
@@ -69,11 +69,11 @@ async function run() {
   }
   // All target geometries, not just symmetry-equivalent corners.
   for(let target=0;target<16;target++) {
-    api.setTarget(target);api.runFull();
+    api.setInitial((7*target)%16);api.setTarget(target);api.runFull();
     await advance(2.4);
     for(let round=1;round<=3;round++) {await advance(8);distribution(`Target ${target}, iteration ${round}`);}
   }
-  api.setParticleCount(16000);api.setTarget(15);api.runFull();await advance(26.4);
+  api.setParticleCount(16000);api.setInitial(15);api.setTarget(15);api.runFull();await advance(26.4);
   distribution('Maximum particle count, complete target 15',true);
   api.setParticleCount(4000);
   api.reset();api.startNext();await advance(.6);const visible=api.readParticles();
