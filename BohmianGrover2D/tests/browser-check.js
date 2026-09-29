@@ -6,7 +6,7 @@ const turn=()=>new Promise(resolve=>setTimeout(resolve,0)),results=[];
 let maxWaveError=0,maxNormError=0,maxAmplitudeError=0,maxBlochError=0,waveChecks=0;
 const check=(name,pass,detail='')=>{results.push({name,pass,detail});panel.textContent=results.filter(r=>r.pass).length+'/'+results.length+' passed\n'+name+': '+(pass?'PASS':'FAIL')+' '+detail;};
 const difference=(a,b)=>Math.max(...Array.from(a,(v,i)=>Math.abs(v-b[i])));
-const input=side=>{const state=new Float64Array(4*side*side);state[0]=1;return state;};
+const input=(side,initial=0)=>{const state=new Float64Array(4*side*side);state[2*initial]=1;return state;};
 const expectedP=(rounds,side)=>Math.sin((2*rounds+1)*Math.asin(1/Math.sqrt(2*side*side)))**2;
 function planFor(side){
   const T=19.2/(2*side),rounds=Math.round(Math.PI/(4*Math.asin(1/Math.sqrt(2*side*side)))-.5);
@@ -24,7 +24,11 @@ async function run(){
   function size(side){
     const slider=doc.getElementById('gridSize');slider.value=side;slider.dispatchEvent(new Event('input',{bubbles:true}));
   }
-  function inspect(expected,name,target,side){
+  function clickWave(region){
+    const side=api.state().side,canvas=doc.getElementById('c'),r=canvas.getBoundingClientRect();
+    canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+r.width*(Math.floor(region/side)+.5)/side,clientY:r.bottom-r.height*(region%side+.5)/side,bubbles:true}));
+  }
+  function inspect(expected,name,target,side,initial=api.state().initial){
     const actual=api.state(),pixels=api.readWave(),grid=actual.grid,dx=1/(grid-1);
     let norm=0,fieldError=0;
     for(let k=0;k<pixels.length;k++)norm+=pixels[k]**2;
@@ -34,7 +38,7 @@ async function run(){
       const psi=referenceWave(expected,x*dx,y*dx);
       for(let s=0;s<4;s++)fieldError=Math.max(fieldError,Math.abs(psi[s]-pixels[offset+s]));
     }
-    const count=2*side*side,prepared=referenceStep(input(side),'prepare',1,target),m=[0,0],u=[0,0];
+    const count=2*side*side,prepared=referenceStep(input(side,initial),'prepare',1,target,initial),m=[0,0],u=[0,0];
     for(let q=0;q<count;q++){
       const r=Math.sqrt(count)*(prepared[2*q]*expected[2*q]+prepared[2*q+1]*expected[2*q+1]);
       const i=Math.sqrt(count)*(prepared[2*q]*expected[2*q+1]-prepared[2*q+1]*expected[2*q]);
@@ -50,30 +54,40 @@ async function run(){
       'wave '+fieldError.toExponential(2)+'; norm '+Math.abs(norm-1).toExponential(2));
   }
   for(const side of [2,3,4,5]){
-    size(side);const count=2*side*side,target=count-1,plan=planFor(side),rounds=(plan.length-1)/4;
-    api.setTarget(target-1);
+    size(side);const count=2*side*side,target=count-1,plan=planFor(side),rounds=(plan.length-1)/4,initialRegion=side*(side-2)+1,initial=2*initialRegion+1;
+    api.setInitial(0);api.setTarget(target-1);
     check(side+'x'+side+': correct grid, dimensions, timing and iterations',
       api.state().side===side&&api.state().stateCount===count&&
-      doc.querySelectorAll('#goalGrid button').length===side*side&&doc.querySelectorAll('#waveLabels [data-region]').length===side*side&&
+      doc.querySelectorAll('#initialGrid button').length===side*side&&doc.querySelectorAll('#waveLabels [data-region]').length===side*side&&
       doc.getElementById('iterationTrack').children.length===rounds&&
       doc.getElementById('inverseCaption').textContent==='WAIT '+(2*side-1)+'T'&&
       doc.getElementById('circuitXLabel').textContent==='x ('+side+')');
     const expectedOrder=Array.from({length:side*side},(_,i)=>side*(i%side)+side-1-Math.floor(i/side));
     check(side+'x'+side+': both grids have the same coordinate order',
-      difference([...doc.querySelectorAll('#goalGrid button')].map(b=>Number(b.dataset.target)),expectedOrder)===0&&
-      getComputedStyle(doc.getElementById('goalGrid')).gridTemplateColumns.split(' ').length===side);
-    const goal=doc.querySelector('#goalGrid [data-target="'+(side*side-1)+'"]');
-    goal.click();check(side+'x'+side+': repeat click selects spin down',api.state().target===target);
-    goal.click();check(side+'x'+side+': next repeat selects spin up',api.state().target===target-1);goal.click();
-    let expected=input(side);
+      difference([...doc.querySelectorAll('#initialGrid button')].map(b=>Number(b.dataset.initial)),expectedOrder)===0&&
+      getComputedStyle(doc.getElementById('initialGrid')).gridTemplateColumns.split(' ').length===side);
+    const start=doc.querySelector('#initialGrid [data-initial="'+initialRegion+'"]');
+    start.click();check(side+'x'+side+': sidebar changes only the input position',api.state().initial===initial-1&&api.state().target===target-1);
+    start.click();check(side+'x'+side+': repeat sidebar click selects initial spin down',api.state().initial===initial&&api.state().target===target-1);
+    start.click();check(side+'x'+side+': next sidebar repeat selects initial spin up',api.state().initial===initial-1);start.click();
+    clickWave(side*side-1);
+    check(side+'x'+side+': wave click flips only target spin',api.state().target===target&&api.state().initial===initial);
+    check(side+'x'+side+': selected input is reflected in the circuit, state and labels',
+      doc.getElementById('circuitInputX').textContent==='|'+Math.floor(initialRegion/side)+'⟩'&&
+      doc.getElementById('circuitInputY').textContent==='|'+initialRegion%side+'⟩'&&doc.getElementById('circuitInputSpin').textContent==='|↓⟩'&&
+      difference(api.state().amplitudes,input(side,initial))===0&&
+      doc.querySelector('.waveCell.initial').dataset.region===String(initialRegion)&&doc.querySelector('.waveCell.marked').dataset.region===String(side*side-1));
+    let expected=input(side,initial);
     for(const [index,gate] of plan.entries()){
       doc.getElementById('next').click();
-      check(side+'x'+side+' gate '+index+': next starts the correct gate and locks target selection',
-        api.state().kind===gate.kind&&[...doc.querySelectorAll('#goalGrid button')].every(b=>b.disabled)&&api.setTarget(0)===false);
+      check(side+'x'+side+' gate '+index+': next starts the correct gate and locks both selections',
+        api.state().kind===gate.kind&&[...doc.querySelectorAll('#initialGrid button')].every(b=>b.disabled)&&api.setTarget(0)===false&&api.setInitial(0)===false);
+      if(gate.kind==='reference')check(side+'x'+side+' gate '+index+': reference names the chosen input',
+        doc.getElementById('stageStatus').textContent.includes('|'+Math.floor(initialRegion/side)+','+initialRegion%side+',↓⟩'));
       let prior=0;
       for(const p of [.25,.5,1]){
         api.advanceTime((p-prior)*gate.duration);prior=p;
-        inspect(referenceStep(expected,gate.kind,p,target),side+'x'+side+' '+gate.kind+' '+index+' at '+p,target,side);
+        inspect(referenceStep(expected,gate.kind,p,target,initial),side+'x'+side+' '+gate.kind+' '+index+' at '+p,target,side);
         if(p===.5&&index<3){
           doc.getElementById('pause').click();const held=JSON.stringify(api.state());
           api.advanceTime(2);api.renderRecordingFrame({fps:60});
@@ -82,18 +96,17 @@ async function run(){
         }
         await turn();
       }
-      expected=referenceStep(expected,gate.kind,1,target);
+      expected=referenceStep(expected,gate.kind,1,target,initial);
       const held=JSON.stringify(api.state());api.advanceTime(.1);
       check(side+'x'+side+' gate '+index+': manual checkpoint holds',held===JSON.stringify(api.state())&&!api.state().busy);
     }
     check(side+'x'+side+': exact expected final probability and completed rounds',
       Math.abs(api.state().probabilities[target]-expectedP(rounds,side))<2e-12&&api.state().checkpoints.filter(g=>g.kind==='forward').length===rounds);
     api.setTarget(0);
-    const canvas=doc.getElementById('c'),r=canvas.getBoundingClientRect();
-    canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+r.width/(2*side),clientY:r.bottom-r.height/(2*side),bubbles:true}));
-    check(side+'x'+side+': clicking the selected wave cell flips spin',api.state().target===1);
-    api.setTarget(0);doc.getElementById('full').click();api.advanceTime(1000);
-    expected=input(side);for(const gate of plan)expected=referenceStep(expected,gate.kind,1,0);
+    clickWave(0);
+    check(side+'x'+side+': clicking the selected wave cell flips spin',api.state().target===1&&api.state().initial===initial);
+    api.setInitial(initial-1);api.setTarget(0);doc.getElementById('full').click();api.advanceTime(1000);
+    expected=input(side,initial-1);for(const gate of plan)expected=referenceStep(expected,gate.kind,1,0,initial-1);
     inspect(expected,side+'x'+side+': queued full search, spin up',0,side);
     check(side+'x'+side+': full queue stops at its own final gate',api.state().completed===plan.length&&!api.state().busy);
     check(side+'x'+side+': GPU error code remains zero',api.gpuInfo().error===0);
@@ -107,6 +120,24 @@ async function run(){
   check('Resizing a running gate resets safely',api.state().side===3&&!api.state().busy&&api.state().time===0);
   doc.getElementById('waveView').value='2';doc.getElementById('waveView').dispatchEvent(new Event('change'));
   check('Component phase view works without a separate phase button',!doc.getElementById('phaseToggle')&&!doc.getElementById('phaseLegendPanel').hidden);
+  api.setInitial(9);api.setTarget(8);api.reset();
+  check('Coincident positions retain both start and goal markers with independent spins',
+    api.state().initial===9&&api.state().target===8&&doc.querySelectorAll('.waveCell.initial.marked').length===1&&
+    doc.querySelector('.waveCell.initial .initialTag').textContent==='START ↓'&&doc.querySelector('.waveCell.marked .goalTag').textContent==='GOAL ↑');
+  // Read actual canvas pixels with overlays hidden, including labels switched off.
+  doc.getElementById('waveView').value='0';doc.getElementById('waveView').dispatchEvent(new Event('change'));
+  for(const id of ['particlesToggle','currentToggle','spinToggle','gridToggle'])doc.getElementById(id).click();
+  const canvas=doc.getElementById('c'),gl=canvas.getContext('webgl2');
+  function borderColor(region,inset){
+    api.advanceTime(0);
+    const side=api.state().side,pixel=new Uint8Array(4),x=Math.floor((Math.floor(region/side)+.5)*canvas.width/side),y=Math.floor((region%side)*canvas.height/side+inset);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.readPixels(x,y,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);return [...pixel];
+  }
+  const red=borderColor(4,2),green=borderColor(4,8);
+  check('Shared cell has separate red outer and green inner GPU outlines with labels off',red[0]>red[1]+80&&green[1]>green[0]+80,JSON.stringify({red,green}));
+  api.setInitial(0);const separate=borderColor(0,2);
+  check('Moving input keeps a green GPU outline at the new cell',separate[1]>separate[0]+80,JSON.stringify(separate));
+  for(const id of ['particlesToggle','currentToggle','spinToggle','gridToggle'])doc.getElementById(id).click();
   size(4);api.reset();api.startNext();api.renderRecordingFrame({fps:60});
   check('Recording shares the selected grid clock',Math.abs(api.state().time-1/60)<1e-14);
   api.reset();

@@ -16,11 +16,15 @@ Open http://127.0.0.1:8835/ in a desktop WebGL2 browser. No dependencies or buil
 
 - **Grid size** selects the number of columns and rows, from 2 through 5.
   Changing it resets the wave, particles, trails, and search checkpoints,
-  including during playback. It keeps the goal spin and clamps the goal
-  position into the new grid. The default remains 4x4.
-- Click a cell in either grid to select its position. **Click the selected cell
-  again to flip its goal spin.** Moving to another cell keeps the chosen spin.
+  including during playback. It keeps both chosen spins and clamps the initial
+  and goal positions into the new grid. The default remains 4x4.
+- The **left grid selects the initial position and spin**, highlighted green.
+  **The main wave selects the goal**, highlighted red. In each selector, click
+  the selected cell again to flip its spin; moving to another cell keeps that
+  selector's chosen spin. The two selections are independent.
   Selection resets the search and is locked during a running or paused gate.
+  Reset and Run full search retain both choices. If the positions coincide,
+  the green outline sits inside the red outline and both spin labels remain.
 - **Apply next operation** prepares the state and then steps through the gates.
   **Run full search**, beside it, runs the complete size-dependent search.
   Manual checkpoints and Pause freeze the simulation clock and trail history.
@@ -64,7 +68,7 @@ The two-component wave is a sum of these N^2 orthonormal, hard-wall packets in
 each spin channel. The complex array stores [up.re, up.im, down.re, down.im]
 per spatial packet. Joint index q = 2*(N*x+y)+spin, with spin 0=up and 1=down.
 
-    input = |0,0,up>
+    input = |i> = the selected initial position and spin
     A = U_box(T) tensor Ry(pi/2)
     A_dagger = U_box((2N-1)T) tensor Ry(-pi/2)
     U_box(t): b_nm -> exp[-i omega (n^2+m^2)t] b_nm
@@ -83,7 +87,13 @@ Each oracle/reference gate is the ideal joint-mode projector pulse:
 
     U_q(p) = I + (exp(-i*pi*p)-1)|q><q|, 0 <= p <= 1
 
-Only one complex spin coefficient rotates. The reference is |0,0,up>.
+Only one complex spin coefficient rotates. The oracle uses q=w, the selected
+goal; the reference uses q=i, the selected input. Thus the diffuser is
+A S_i A_dagger, where S_i=I-2|i><i|. It reflects about the prepared state
+A|i>, up to the same overall sign as before. Every basis input prepares equal
+joint probabilities, so selecting a different input changes intermediate
+wave patterns and trajectories but preserves the amplification curve and
+all gate durations. The default input remains |0,0,up>.
 As in the parent, the kinetic Hamiltonian is not added during these nonlocal
 ideal pulses. Each lasts 1.6 gate-time seconds.
 
@@ -151,7 +161,9 @@ current grid without recompiling shaders.
 
 The adaptive GPU integrator follows dx/ds=T_gate*j_total, dp/ds=rho with
 cubic dense output. It has no velocity cap, goal attraction, or density
-resampling during gates. Wave evolution is exact within the finite modal
+resampling during gates. On reset, particle positions sample the selected
+input packet's density along each axis; changing only its spin leaves that
+position distribution unchanged. Wave evolution is exact within the finite modal
 subspace; trajectory integration and sampled correction fields have numerical
 error. The CPU current and wall-flux tests check continuity independently.
 
@@ -160,15 +172,17 @@ error. The CPU current and wall-flux tests check continuity independently.
 Run:
 
     node tests/static-check.mjs
-    node --test tests/multiregion.test.mjs tests/flow.test.mjs tests/grid-sizes.test.mjs
+    node --test tests/multiregion.test.mjs tests/flow.test.mjs tests/grid-sizes.test.mjs tests/initial-state.test.mjs
 
 Browser fixtures load the production app:
 
 - tests/browser-check.html: actual RGBA spinor readbacks, independent dense
   complex-matrix propagation at every grid size, circuit/sphere state,
-  spin selection, resizing during playback, and clocks.
+  independent input/goal selection, their separate GPU outlines, resizing
+  during playback, and clocks.
 - tests/flow-browser-check.html: GPU total/spin current, 4,000-particle spatial
-  distributions at every grid size, 8x8 histograms, a 16,000-particle 5x5 run, and
+  distributions from displaced input packets at every grid size, 8x8
+  histograms, a 16,000-particle 5x5 run with coincident input/goal, and
   display/clock independence.
 - tests/trail-browser-check.html: inherited GPU trail decay and recording.
 

@@ -6,6 +6,8 @@
 // resources resolve to the app root, and the verifier shares its JS realm.
 const response = await fetch('../index.html');
 const source = await response.text();
-const html = source.replace('<head>', '<head><base href="../"/>').replace('</body>', '<script type="module" src="./tests/browser-check.js"><' + '/script></body>');
+// Split the closing tag so Live Server does not inject code inside a JS string.
+const bodyEnd='<'+'/body>';
+const html=source.replace('<head>','<head><base href="../"/>').replace(bodyEnd,'<script type="module" src="./tests/browser-check.js"><'+'/script>'+bodyEnd);
 document.open(); document.write(html); document.close();
 </script></body></html>

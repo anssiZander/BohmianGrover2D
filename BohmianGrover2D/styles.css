@@ -7,10 +7,10 @@
 button{padding:8px 10px;border-radius:8px;border:1px solid rgba(132,192,255,.26);background:rgba(68,130,210,.14);color:#e8f2ff;cursor:pointer}
 button:hover:not(:disabled){background:rgba(86,150,232,.25);border-color:#5e9ed0}button:disabled{opacity:.42;cursor:not-allowed}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #69d9ff;outline-offset:2px}
 .mini{flex:0 0 30px;width:30px;height:27px;padding:0;display:grid;place-items:center;font-size:16px}.section{margin:16px 0 8px;font-size:11px;font-weight:700;color:#9fbce0;text-transform:uppercase;letter-spacing:1px}
-#goalGrid{display:grid;grid-template-columns:repeat(var(--grid-side,4),minmax(0,1fr));gap:5px}#goalGrid button{position:relative;min-width:0;padding:8px 2px 10px;overflow:hidden;font-size:11px;text-align:center;background:rgba(22,42,68,.74)}
-#goalGrid button span{display:block;font-weight:700}#goalGrid button b{display:block;margin-top:3px;font-size:10px;color:#8fb4d6;font-variant-numeric:tabular-nums;font-weight:500}#goalGrid button i{position:absolute;bottom:0;left:0;height:3px;width:0;background:linear-gradient(90deg,#37c8ff,#e055ff)}
-#goalGrid button.selected{border-color:#ff5264;background:linear-gradient(145deg,rgba(136,26,50,.5),rgba(44,24,54,.8));box-shadow:0 0 14px rgba(255,45,67,.13)}#goalGrid button.selected b{color:#ffd4d9}#goalGrid button.selected i{background:#ff6376}
-.note{font-size:10px;color:#9fbce0;line-height:1.5}#targetSummary{margin:8px 0 0}.ops{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ops button{font-size:12px;min-height:44px;padding:7px 5px}.ops .full{background:rgba(132,64,210,.2);border-color:rgba(194,120,255,.45)}
+#initialGrid{display:grid;grid-template-columns:repeat(var(--grid-side,4),minmax(0,1fr));gap:5px}#initialGrid button{position:relative;min-width:0;padding:8px 2px 10px;overflow:hidden;font-size:11px;text-align:center;background:rgba(22,42,68,.74)}
+#initialGrid button span{display:block;font-weight:700}#initialGrid button b{display:block;margin-top:3px;font-size:10px;color:#8fb4d6;font-variant-numeric:tabular-nums;font-weight:500}#initialGrid button i{position:absolute;bottom:0;left:0;height:3px;width:0;background:linear-gradient(90deg,#37c8ff,#e055ff)}
+#initialGrid button.selected{border-color:#48ed7c;background:linear-gradient(145deg,rgba(20,105,52,.48),rgba(16,41,43,.8));box-shadow:0 0 14px rgba(45,255,107,.13)}#initialGrid button.selected b{color:#c9ffdc}#initialGrid button.selected i{background:#48ed7c}
+.note{font-size:10px;color:#9fbce0;line-height:1.5}#initialSummary{margin:8px 0 0}.ops{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ops button{font-size:12px;min-height:44px;padding:7px 5px}.ops .full{background:rgba(132,64,210,.2);border-color:rgba(194,120,255,.45)}
 .flowSettings{border-top:1px solid rgba(132,192,255,.15);padding-top:10px;margin-top:14px}.flowSettings summary{font-size:11px;color:#9fbce0;cursor:pointer}.flowToggles{display:flex;justify-content:center;gap:6px;margin:5px 0}.flowToggles button{padding:4px 9px;font-size:10px;color:#8397ac;background:rgba(31,48,70,.32)}.flowToggles button[aria-pressed=true]{color:#d9f1ff;border-color:rgba(104,206,255,.55);background:rgba(32,84,121,.3)}.flowToggles #particlesToggle[aria-pressed=true],.flowToggles #trailsToggle[aria-pressed=true]{color:#ffea9b;border-color:rgba(237,204,103,.42)}.particleMetric{display:flex;justify-content:space-between;font-size:10px;color:#aac0d8;margin-top:10px}.particleMetric b{font-weight:600;color:#ffe386}#flowStatus{font-size:9px;margin-top:4px}
 .btnrow{display:flex;gap:8px;margin-top:12px}.btnrow button{flex:1;font-size:12px}.status{margin-top:8px;min-height:34px;font-size:11px;line-height:1.5;color:#b9cce5}
 #progressTrack{height:5px;border-radius:999px;background:rgba(90,130,180,.18);overflow:hidden;margin-top:10px}#progressBar{height:100%;width:0;background:linear-gradient(90deg,#3ec6ff,#d65cff)}
@@ -33,17 +33,21 @@ button:hover:not(:disabled){background:rgba(86,150,232,.25);border-color:#5e9ed0
 .phaseLegend{display:flex;align-items:center;gap:14px;margin:12px 0}.phaseWheel{position:relative;flex:0 0 76px;height:76px;border-radius:50%;background:conic-gradient(from 90deg,#ff0000,#80ff00,#00ffff,#8000ff,#ff0000);border:1px solid rgba(220,240,255,.35)}.phaseWheel:after{content:'';position:absolute;inset:23px;border-radius:50%;background:rgba(5,16,36,.94)}.phaseLabels{font-size:10px;line-height:1.6;color:#c8d9ef}.phaseLabels b{color:#fff}.theory{color:#abc1da;font-size:11px;line-height:1.55;margin:14px 0 35px}.theory summary{color:#cce9ff;cursor:pointer}.theory p{margin:10px 0}.math{padding:8px 10px;border:1px solid rgba(132,192,255,.18);border-radius:8px;background:rgba(8,23,51,.54);color:#eef7ff;font-family:"Cambria Math","Times New Roman",serif;font-size:15px}
 @media(min-width:1600px){#wrap{grid-template-columns:320px minmax(0,1fr) 380px;gap:20px}}
 @media(max-width:1100px){html,body{overflow:auto}#wrap{height:auto;min-height:100%;grid-template-columns:270px minmax(0,1fr);grid-template-rows:minmax(680px,calc(100vh - 24px)) auto}#rightColumn{grid-column:1/-1;display:grid;grid-template-columns:300px minmax(0,1fr);align-items:start}#info{max-height:720px}.groverGeometry svg{max-width:360px}}
-@media(max-width:650px){#wrap{display:flex;flex-direction:column;padding:9px}#ui{max-height:none}#stage{height:calc(100vw + 110px);min-height:380px}#rightColumn{display:flex}#goalGrid button{padding:8px}#info{max-height:none}.waveCell{padding:5px}.waveCell b{font-size:9px;bottom:5px;right:5px}#waveHeader h1{font-size:17px}}
+@media(max-width:650px){#wrap{display:flex;flex-direction:column;padding:9px}#ui{max-height:none}#stage{height:calc(100vw + 110px);min-height:380px}#rightColumn{display:flex}#initialGrid button{padding:8px}#info{max-height:none}.waveCell{padding:5px}.waveCell b{font-size:9px;bottom:5px;right:5px}#waveHeader h1{font-size:17px}}
 
 /* Spin channels keep the established blue panels, cyan grid and golden trails. */
 select{font:inherit;min-width:0;max-width:100%;color:#e8f2ff;background:#0a203b;border:1px solid #3f6388;border-radius:6px;padding:5px}
 .row select{flex:1}select:focus-visible{outline:2px solid #69d9ff;outline-offset:2px}
-.spinUp,#goalGrid button b.spinUp{color:#75e4ff}.spinDown,#goalGrid button b.spinDown{color:#ff91ca}
-#goalGrid button b.goalSpin{color:#fff3b0;font-weight:800;text-decoration:underline;text-underline-offset:3px}
-#goalGrid button.selected{border-width:2px;padding-top:7px;padding-bottom:9px}
+.spinUp,#initialGrid button b.spinUp{color:#75e4ff}.spinDown,#initialGrid button b.spinDown{color:#ff91ca}
+#initialGrid button b.initialSpin{color:#adffc3;font-weight:800;text-decoration:underline;text-underline-offset:3px}
+#initialGrid button.selected{border-width:2px;padding-top:7px;padding-bottom:9px}
 .selectionHelp{color:#c4d9ef;margin:6px 0 0}.waveCell b span{display:block;line-height:1.55}
 .waveCell b span.goalSpin{color:#fff2a4;font-weight:800}.waveCell .cellLabel{font-weight:700}
 .spinMetrics{display:flex;gap:14px;justify-content:space-between;margin-top:12px;font-size:12px}
 .spinMetrics b{font-variant-numeric:tabular-nums}.flowToggles{flex-wrap:wrap}
 .flowToggles #spinToggle[aria-pressed=true]{color:#e9b7ff;border-color:#b883d8}
 @media(max-width:650px){#stage{height:calc(100vw + 190px)}#waveFooter{min-height:130px}.targetBadge{padding:5px}.targetBadge span{font-size:9px}}
+
+.stateBadges{display:flex;gap:7px;align-items:stretch;flex-shrink:0}.initialBadge{display:flex;align-items:center;padding:8px;border:1px solid rgba(72,237,124,.5);border-radius:8px;background:rgba(16,78,42,.25);color:#a3ffc1;font-size:10px;font-weight:750;white-space:nowrap}
+.waveCell .initialTag,.waveCell .goalTag{display:block;width:max-content;margin-top:3px;font-size:9px;line-height:1.3;font-weight:750;letter-spacing:.04em}.waveCell .initialTag{color:#91ffb0}.waveCell .goalTag{color:#ffadbb}.waveCell .initialTag:empty,.waveCell .goalTag:empty{display:none}
+@media(max-width:650px){.stateBadges{flex-direction:column;gap:4px}.initialBadge{padding:4px 5px;font-size:9px}}

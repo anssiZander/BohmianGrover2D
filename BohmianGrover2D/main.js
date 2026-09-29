@@ -9,12 +9,12 @@ const params = { speed: 1, visGain: .65, visGamma: .55, showGrid: true,
   particleSize: 3.5, arrowGrid: 20, currentGain: 2.5, trailHalfLife: 1.5, waveView: 0, currentMode: 0, showSpin: true };
 const byId = id => document.getElementById(id);
 const dom = Object.fromEntries(['c', 'waveArea', 'waveLabels', 'stage', 'waveHeader', 'waveFooter',
-  'goalGrid', 'targetSummary', 'next', 'full', 'gridSize', 'gridSizeValue', 'gridSummary', 'appTitle', 'stateCountLabel',
-  'circuitXLabel', 'circuitYLabel', 'inverseCaption', 'circuitDescription', 'circuitTitle',
+  'initialGrid', 'initialSummary', 'next', 'full', 'gridSize', 'gridSizeValue', 'gridSummary', 'appTitle', 'stateCountLabel',
+  'circuitXLabel', 'circuitYLabel', 'circuitInputX', 'circuitInputY', 'circuitInputSpin', 'inverseCaption', 'circuitDescription', 'circuitTitle',
   'reset', 'pause', 'progressBar', 'stageStatus', 'speed', 'speedValue', 'brightness', 'brightnessValue',
   'gridToggle', 'ui', 'uibody', 'minui', 'circuitPanel', 'circuitToggle', 'circuitStatus',
   'circuitTarget', 'circuitReadout', 'iterationTrack', 'modeProbability', 'boxProbability', 'normValue',
-  'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry',
+  'waveInitial', 'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry',
   'currentToggle', 'particlesToggle', 'trailsToggle', 'particleCount', 'particleCountValue',
   'particleSize', 'particleSizeValue', 'arrowGrid', 'arrowGridValue', 'currentGain', 'currentGainValue',
   'trailHalfLife', 'trailHalfLifeValue', 'waveView', 'currentMode', 'spinToggle',
@@ -25,16 +25,16 @@ const canvas = dom.c;
 let gl, waveTexture, waveFbo, vao, reconstruction, renderer, flow, ready = false;
 let waveDirty = true, renderDirty = true, frameRecordingActive = false, lastTime = null, glError = 0;
 let lastUiKey = '', previousBusy = null, cachedBoxProbability = 0;
-const targetButtons = [], waveCells = [];
+const initialButtons = [], waveCells = [];
 const circuitGates = Array.from(document.querySelectorAll('[data-circuit-kind]'));
 
 function formatProbability(p) { return `${(100 * Math.max(0, Math.min(1, p))).toFixed(1)}%`; }
 function markChanged() { waveDirty = true; renderDirty = true; lastUiKey = ''; }
 
-function makeTargetGrid() {
+function makeGrids() {
   const {side,spatialLabels:SPATIAL_LABELS,stateCount,iterations,inverseFactor}=simulation.model;
-  targetButtons.length=0;waveCells.length=0;
-  dom.goalGrid.replaceChildren();dom.waveLabels.replaceChildren();
+  initialButtons.length=0;waveCells.length=0;
+  dom.initialGrid.replaceChildren();dom.waveLabels.replaceChildren();
   document.documentElement.style.setProperty('--grid-side',side);
   dom.gridSize.value=side;dom.gridSizeValue.textContent=side+'×'+side;
   dom.gridSize.setAttribute('aria-valuetext',side+' by '+side+', '+stateCount+' position-spin states');
@@ -52,13 +52,12 @@ function makeTargetGrid() {
   dom.iterationTrack.innerHTML=Array.from({length:iterations},(_,i)=>'<span data-iteration="'+(i+1)+'">Iteration '+(i+1)+'<b>—</b></span>').join('');
   for (let y = side-1; y >= 0; y--) for (let x = 0; x < side; x++) {
     const q = side * x + y, button = document.createElement('button');
-    button.type = 'button'; button.dataset.target = q;
-    button.setAttribute('aria-label', `Mark |${SPATIAL_LABELS[q]}⟩, column ${x + 1}, row ${y + 1} from bottom`);
+    button.type = 'button'; button.dataset.initial = q;
     button.innerHTML = `<span>|${SPATIAL_LABELS[q]}⟩</span><b class="spinUp">↑ 0.0%</b><b class="spinDown">↓ 0.0%</b><i></i>`;
-    button.addEventListener('click', () => chooseCell(q));
-    dom.goalGrid.append(button); targetButtons[q] = button;
+    button.addEventListener('click', () => chooseInitialCell(q));
+    dom.initialGrid.append(button); initialButtons[q] = button;
     const cell = document.createElement('div'); cell.className = 'waveCell'; cell.dataset.region = q;
-    cell.innerHTML = `<span class="cellLabel">|${SPATIAL_LABELS[q]}⟩</span><b><span class="spinUp">↑ 0.0%</span><span class="spinDown">↓ 0.0%</span></b>`;
+    cell.innerHTML = `<span class="cellLabel">|${SPATIAL_LABELS[q]}⟩</span><span class="initialTag"></span><span class="goalTag"></span><b><span class="spinUp">↑ 0.0%</span><span class="spinDown">↓ 0.0%</span></b>`;
     dom.waveLabels.append(cell); waveCells[q] = cell;
   }
 }
@@ -67,22 +66,31 @@ function chooseCell(region) {
   const spin = region === (simulation.target >> 1) ? 1 - (simulation.target & 1) : simulation.target & 1;
   return chooseTarget(2 * region + spin);
 }
+function chooseInitialCell(region) {
+  const spin = region === (simulation.initial >> 1) ? 1 - (simulation.initial & 1) : simulation.initial & 1;
+  return chooseInitial(2 * region + spin);
+}
+function chooseInitial(q) {
+  if (!simulation.setInitial(q)) return false;
+  flow?.reset(params.particleCount,simulation.model.side,simulation.initial);
+  markChanged(); syncUi(); return true;
+}
 function displayGate() {
   return simulation.active || simulation.last || { kind: 'prepare', duration: simulation.model.mixTime, progress: 0, startAmplitudes: simulation.amplitudes };
 }
 function setGridSize(value) {
   if(!simulation.setGridSize(Number(value)))return false;
-  flow?.reset(params.particleCount,simulation.model.side);
-  makeTargetGrid();markChanged();syncUi();layout();return true;
+  flow?.reset(params.particleCount,simulation.model.side,simulation.initial);
+  makeGrids();markChanged();syncUi();layout();return true;
 }
 function chooseTarget(q) {
   if (!simulation.setTarget(q)) return false;
-  flow?.reset(params.particleCount,simulation.model.side);
+  flow?.reset(params.particleCount,simulation.model.side,simulation.initial);
   markChanged(); syncUi(); return true;
 }
-function reset() { simulation.reset(); flow?.reset(params.particleCount,simulation.model.side); markChanged(); syncUi(); }
+function reset() { simulation.reset(); flow?.reset(params.particleCount,simulation.model.side,simulation.initial); markChanged(); syncUi(); }
 function startNext() { if (simulation.startNext()) { markChanged(); syncUi(); return true; } return false; }
-function runFull() { if (simulation.runFull()) { flow?.reset(params.particleCount,simulation.model.side); markChanged(); syncUi(); return true; } return false; }
+function runFull() { if (simulation.runFull()) { flow?.reset(params.particleCount,simulation.model.side,simulation.initial); markChanged(); syncUi(); return true; } return false; }
 function togglePause() { simulation.paused = !simulation.paused; lastUiKey = ''; syncUi(); }
 function setParticleCount(value) {
   if (simulation.active) return false;
@@ -99,37 +107,45 @@ function syncUi() {
   const key = `${simulation.revision}/${simulation.target}/${simulation.completed}/${kind}/${progress}/${busy}/${simulation.paused}`;
   if (key === lastUiKey) return;
   lastUiKey = key;
-  const p = probabilities(simulation.amplitudes), target = simulation.target;
+  const p = probabilities(simulation.amplitudes), target = simulation.target, initial = simulation.initial;
   cachedBoxProbability = boxProbability(simulation.amplitudes, target >> 1);
   for (let q = 0; q < SPATIAL_COUNT; q++) {
-    const button=targetButtons[q],isTarget=q===(target>>1),spin=target&1;
-    button.classList.toggle('selected',isTarget);button.dataset.spin=String(spin);
-    button.setAttribute('aria-pressed',String(isTarget));button.disabled=busy;
-    button.setAttribute('aria-label',isTarget ? 'Goal |'+LABELS[target]+'⟩. Click again to flip spin.' : 'Select |'+SPATIAL_LABELS[q]+','+(spin?'↓':'↑')+'⟩');
+    const button=initialButtons[q],isTarget=q===(target>>1),isInitial=q===(initial>>1),spin=target&1,inputSpin=initial&1;
+    button.classList.toggle('selected',isInitial);button.dataset.spin=String(inputSpin);
+    button.setAttribute('aria-pressed',String(isInitial));button.disabled=busy;
+    button.setAttribute('aria-label',isInitial ? 'Initial |'+LABELS[initial]+'⟩. Click again to flip spin.' : 'Start in |'+SPATIAL_LABELS[q]+','+(inputSpin?'↓':'↑')+'⟩');
     for(const [channel,name,arrow] of [[0,'spinUp','↑'],[1,'spinDown','↓']]){
       const text=arrow+' '+formatProbability(p[2*q+channel]);
       button.querySelector('.'+name).textContent=text;
-      button.querySelector('.'+name).classList.toggle('goalSpin',isTarget&&spin===channel);
+      button.querySelector('.'+name).classList.toggle('initialSpin',isInitial&&inputSpin===channel);
       waveCells[q].querySelector('.'+name).textContent=text;
       waveCells[q].querySelector('.'+name).classList.toggle('goalSpin',isTarget&&spin===channel);
     }
-    button.querySelector('i').style.width=formatProbability(p[2*q+spin]);
-    button.dataset.probability=p[2*q+spin];
+    button.querySelector('i').style.width=formatProbability(p[2*q+inputSpin]);
+    button.dataset.probability=p[2*q+inputSpin];
     waveCells[q].classList.toggle('marked',isTarget);
-    waveCells[q].querySelector('.cellLabel').textContent='|'+SPATIAL_LABELS[q]+'⟩'+(isTarget?' '+(spin?'↓':'↑'):'');
+    waveCells[q].classList.toggle('initial',isInitial);
+    waveCells[q].querySelector('.initialTag').textContent=isInitial?'START '+(inputSpin?'↓':'↑'):'';
+    waveCells[q].querySelector('.goalTag').textContent=isTarget?'GOAL '+(spin?'↓':'↑'):'';
   }
   const spin=spinSummary(simulation.amplitudes);
   dom.spinUpProbability.textContent=formatProbability(spin.up);
   dom.spinDownProbability.textContent=formatProbability(spin.down);
   dom.spinPurity.textContent=spin.purity.toFixed(3);
   const targetText = `|${LABELS[target]}⟩`;
-  dom.targetSummary.textContent = `Goal ${targetText} · column ${Math.floor((target >> 1)/side) + 1}, row ${((target >> 1)%side) + 1} from bottom`;
+  const initialText = `|${LABELS[initial]}⟩`;
+  dom.initialSummary.textContent = `Initial ${initialText} · column ${Math.floor((initial >> 1)/side) + 1}, row ${((initial >> 1)%side) + 1} from bottom`;
+  dom.waveInitial.textContent = `INITIAL ${initialText}`;
   dom.waveTarget.textContent = `MARKED ${targetText}`;
+  dom.circuitInputX.textContent='|'+Math.floor((initial>>1)/side)+'⟩';
+  dom.circuitInputY.textContent='|'+((initial>>1)%side)+'⟩';
+  dom.circuitInputSpin.textContent=(initial&1)?'|↓⟩':'|↑⟩';
   dom.waveProbability.textContent = formatProbability(p[target]);
   dom.modeProbability.textContent = formatProbability(p[target]);
   dom.boxProbability.textContent = formatProbability(cachedBoxProbability);
   dom.normValue.textContent = p.reduce((sum, value) => sum + value, 0).toFixed(6);
-  dom.next.title=GATES[simulation.completed]?.name||'Search complete';
+  const nextGate=GATES[simulation.completed];
+  dom.next.title=nextGate?.kind==='reference'?'Reference phase '+initialText:nextGate?.name||'Search complete';
   dom.next.disabled = busy || complete;
   dom.full.disabled = busy;
   dom.pause.textContent = simulation.paused ? 'Resume' : 'Pause';
@@ -138,7 +154,7 @@ function syncUi() {
   const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
   const status = complete ? 'Complete · '+ITERATIONS+' Grover iterations' : busy
     ? `${simulation.paused ? 'Paused' : 'Running'} · ${round}${gate.name} · ${Math.round(100 * progress)}%`
-    : gate ? `${round}${gate.name} complete` : 'Ready · input |0,0,↑⟩';
+    : gate ? `${round}${gate.name} complete` : 'Ready · input '+initialText;
   dom.stageStatus.textContent = status;
   dom.circuitStatus.textContent = status;
   dom.circuitTarget.textContent = `w = ${targetText}`;
@@ -162,21 +178,22 @@ function syncUi() {
     marker.querySelector('b').textContent = result ? formatProbability(result.targetProbability) : '—';
   }
   const descriptions = {
-    input: 'Begin in one localized mode. Prepare the balanced state to start the search.',
+    input: 'Start in '+initialText+'. Click the wave to choose the red goal; click it again to flip its spin.',
     prepare: 'Free evolution and a spin rotation prepare '+stateCount+' joint states, each with probability '+(100/stateCount).toFixed(3)+'%.',
     oracle: 'Only the marked position–spin state changes phase. Its probability stays fixed while its contribution interferes differently in space.',
     inverse: 'Free motion continues forward for '+inverseFactor+'T while the spin rotation is undone. Together they implement A†.',
-    reference: 'Only the |0,0,↑⟩ coefficient turns through π while every other logical coefficient stays fixed.',
+    reference: 'Only the initial '+initialText+' coefficient turns through π while every other logical coefficient stays fixed.',
     forward: 'Free evolution plus the forward spin rotation completes the reflection. Unmarked contributions cancel and the marked mode grows.',
   };
   dom.gateDescription.textContent = complete ? (100*expectedProbability(ITERATIONS,side)).toFixed(3)+'% in the marked position–spin state after '+ITERATIONS+' iterations.' : descriptions[kind];
   const stepKey = `${simulation.revision}/${target}/${gate?.index ?? -1}`;
-  geometry.update({ target, kind, progress, running: busy, paused: simulation.paused, iteration, complete,
+  geometry.update({ target, initial, kind, progress, running: busy, paused: simulation.paused, iteration, complete,
     amplitudes: simulation.amplitudes, startAmplitudes: gate?.startAmplitudes || simulation.amplitudes, stepKey });
   document.documentElement.dataset.stage = String(simulation.completed);
   document.documentElement.dataset.gate = kind;
   document.documentElement.dataset.progress = String(progress);
   document.documentElement.dataset.target = String(target);
+  document.documentElement.dataset.initial = String(initial);
   if (flow) {
     const stats = flow.statistics(target, progress, !busy || simulation.paused);
     dom.particleProbability.textContent = formatProbability(stats.boxProbability);
@@ -292,9 +309,9 @@ function render() {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, waveTexture); gl.uniform1i(u.uWave, 0);
   gl.uniform1f(u.uVisGain, params.visGain); gl.uniform1f(u.uVisGamma, params.visGamma);
   gl.uniform1i(u.uSide,simulation.model.side); gl.uniform1i(u.uShowGrid, params.showGrid ? 1 : 0);
-  gl.uniform1i(u.uTarget, simulation.target >> 1);gl.uniform1i(u.uWaveView, params.waveView);
+  gl.uniform1i(u.uTarget, simulation.target >> 1);gl.uniform1i(u.uInitial, simulation.initial >> 1);gl.uniform1i(u.uWaveView, params.waveView);
   const gate = simulation.active;
-  gl.uniform1i(u.uGateRegion, gate?.kind === 'oracle' ? simulation.target >> 1 : gate?.kind === 'reference' ? 0 : -1);
+  gl.uniform1i(u.uGateRegion, gate?.kind === 'oracle' ? simulation.target >> 1 : gate?.kind === 'reference' ? simulation.initial >> 1 : -1);
   gl.uniform1f(u.uGateFlash, gate ? Math.sin(Math.PI * gate.progress) : 0);
   gl.uniform1f(u.uPixelSize, 1 / canvas.width);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -324,6 +341,7 @@ const api = {
   isReady: () => ready,
   state: () => ({ ...simulation.snapshot(), boxProbability: cachedBoxProbability, grid: GRID, speed: params.speed }),
   reset, setTarget: chooseTarget, selectCell: chooseCell, startNext, runFull, togglePause,
+  setInitial: chooseInitial, selectInitialCell: chooseInitialCell,
   setParticleCount, setGridSize,
   readParticles: () => flow.readParticles(),
   readFlow: () => { const gate=displayGate();flow.prepare(gate,simulation.target);return flow.readField(gate.progress); },
@@ -348,7 +366,7 @@ window.GroverMultiRegion = api;
 window.BohmianGrover2D = api;
 
 async function main() {
-  makeTargetGrid(); installEvents(); layout(); syncUi();
+  makeGrids(); installEvents(); layout(); syncUi();
   gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false });
   if (!gl || !gl.getExtension('EXT_color_buffer_float')) throw new Error('This wave view requires WebGL2 with floating-point render targets.');
   const linear = !!gl.getExtension('OES_texture_float_linear');
@@ -358,7 +376,7 @@ async function main() {
     loadShader('fullscreen.vert'), loadShader('mode_wave.frag'), loadShader('multiregion_render.frag'),
   ]);
   reconstruction = createProgram(vertex, waveSource, ['uCoefficients[0]', 'uGridSize','uSide']);
-  renderer = createProgram(vertex, renderSource, ['uWave', 'uVisGain', 'uVisGamma', 'uSide', 'uShowGrid', 'uTarget', 'uGateRegion', 'uGateFlash', 'uPixelSize', 'uWaveView']);
+  renderer = createProgram(vertex, renderSource, ['uWave', 'uVisGain', 'uVisGamma', 'uSide', 'uShowGrid', 'uTarget', 'uInitial', 'uGateRegion', 'uGateFlash', 'uPixelSize', 'uWaveView']);
   waveTexture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, waveTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, linear ? gl.LINEAR : gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, linear ? gl.LINEAR : gl.NEAREST);
@@ -370,7 +388,7 @@ async function main() {
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Could not create the floating-point wave texture.');
   const initializedFlow = new FlowRenderer(gl, GRID, loadShader, createProgram);
   await initializedFlow.init(vertex); flow = initializedFlow;
-  flow.reset(params.particleCount,simulation.model.side);
+  flow.reset(params.particleCount,simulation.model.side,simulation.initial);
   ready = true; lastUiKey = ''; syncUi(); dom.loading.hidden = true; document.documentElement.dataset.webgl2 = 'ready';
   document.documentElement.dataset.viewMode = 'single'; render();
   requestAnimationFrame(function loop(now) {

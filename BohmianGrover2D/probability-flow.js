@@ -28,14 +28,14 @@ function kineticDerivative(a) {
     out[i]=e*a[i+1];out[i+1]=-e*a[i];
   }return out;
 }
-export function gateFlow(start,kind,target,duration) {
+export function gateFlow(start,kind,target,duration,initial=0) {
   const {side}=modelOfState(start),modes=2*side+1;
   if(['prepare','forward','inverse'].includes(kind))return {
     mode:'free',side,modes,coefficients:sineCoefficients(start),span:FREE_OMEGA*duration,
     spinAngle:(kind==='inverse'?-1:1)*Math.PI/2,duration,
   };
   if(kind!=='oracle'&&kind!=='reference')throw Error('Unknown phase gate: '+kind);
-  const fixed=Float64Array.from(start),rotating=new Float64Array(start.length),q=kind==='oracle'?target:0;
+  const fixed=Float64Array.from(start),rotating=new Float64Array(start.length),q=kind==='oracle'?target:initial;
   rotating[2*q]=fixed[2*q];rotating[2*q+1]=fixed[2*q+1];fixed[2*q]=0;fixed[2*q+1]=0;
   const f=sineCoefficients(fixed),g=sineCoefficients(rotating),cross=crossDensity(f,g);
   const dc=cross.re.map(v=>2*v),ds=cross.im.map(v=>2*v),df=kineticDerivative(f),dg=kineticDerivative(g);
@@ -112,28 +112,34 @@ export function flowAt(flow,x,y,progress) {
 
 // Inverse CDF of the initial 1D packet. Stratification and a deterministic
 // shuffle avoid an artificial spatial lattice without resampling during gates.
-function initialCdf(x,side,transform) {
+function initialCdf(x,side,weights) {
   let sum = 0;
   for (let n = 1; n <= side; n++) for (let m = 1; m <= side; m++) {
     const integral = n === m ? x-Math.sin(2*n*Math.PI*x)/(2*n*Math.PI)
       : Math.sin((n-m)*Math.PI*x)/((n-m)*Math.PI)-Math.sin((n+m)*Math.PI*x)/((n+m)*Math.PI);
-    sum += transform[0][n-1]*transform[0][m-1]*integral;
+    sum += weights[n-1]*weights[m-1]*integral;
   }
   return sum;
 }
-export function sampleInitialParticles(count, seed = 73991, side = 4) {
-  const transform=gridModel(side).packetTransform;
+export function sampleInitialParticles(count, seed = 73991, side = 4, initial = 0) {
+  const {packetTransform:transform,stateCount}=gridModel(side);
+  if(!Number.isInteger(initial)||initial<0||initial>=stateCount)throw new RangeError('Invalid initial state.');
+  const region=initial>>1,xCell=Math.floor(region/side),yCell=region%side;
   let randomState = seed >>> 0;
   const random = () => { randomState ^= randomState << 13; randomState ^= randomState >>> 17; randomState ^= randomState << 5; return (randomState >>> 0)/4294967296; };
-  const quantiles = new Float32Array(count), order = Uint32Array.from({length:count},(_,i)=>i);
+  const quantilesX = new Float32Array(count),quantilesY=xCell===yCell?quantilesX:new Float32Array(count);
+  const axes=[[transform[xCell],quantilesX]],order=Uint32Array.from({length:count},(_,i)=>i);
+  if(xCell!==yCell)axes.push([transform[yCell],quantilesY]);
   for (let i = 0; i < count; i++) {
     const u = (i+.15+.7*random())/count;
-    let lo = 0, hi = 1;
-    for (let k = 0; k < 34; k++) { const mid = .5*(lo+hi); if (initialCdf(mid,side,transform) < u) lo = mid; else hi = mid; }
-    quantiles[i] = .5*(lo+hi);
+    for(const [weights,quantiles] of axes){
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 34; k++) { const mid = .5*(lo+hi); if (initialCdf(mid,side,weights) < u) lo = mid; else hi = mid; }
+      quantiles[i] = .5*(lo+hi);
+    }
   }
   for (let i = count-1; i > 0; i--) { const j = Math.floor(random()*(i+1)); [order[i],order[j]] = [order[j],order[i]]; }
   const states = new Float32Array(4*count);
-  for (let i = 0; i < count; i++) { states[4*i] = quantiles[i]; states[4*i+1] = quantiles[order[i]]; }
+  for (let i = 0; i < count; i++) { states[4*i] = quantilesX[i]; states[4*i+1] = quantilesY[order[i]]; }
   return states;
 }

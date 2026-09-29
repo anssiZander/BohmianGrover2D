@@ -1,13 +1,13 @@
 import { modelOfState, expectedProbability, evolveGate, projectGroverState } from './multiregion-core.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
-const gateNames = { input: 'Input |0,0,↑⟩', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference S₀', forward: 'Forward A' };
-function descriptions(model) {return {
-  input: 'Start in the lower-left logical packet |0,0,↑⟩. Preparation will spread its amplitude over all '+model.stateCount+' joint states.',
+const gateNames = { input: 'Input', prepare: 'Prepare A', oracle: 'Oracle Oω', inverse: 'Inverse A†', reference: 'Reference Sᵢ', forward: 'Forward A' };
+function descriptions(model,initial) {return {
+  input: 'Start in the selected logical packet |'+model.labels[initial]+'⟩. Preparation will spread its amplitude over all '+model.stateCount+' joint states.',
   prepare: 'Free evolution and a spin rotation create equal probabilities with definite relative phases in all '+model.stateCount+' joint states. The cyan point marks this prepared state |s⟩.',
   oracle: 'The oracle turns the marked amplitude through π. All logical probabilities stay fixed during this phase gate.',
   inverse: 'A† combines forward free motion for '+model.inverseFactor+'T with the inverse spin rotation. The projection follows the full intervening evolution.',
-  reference: 'A π phase pulse on |0,0,↑⟩ is the central operation of the diffuser.',
+  reference: 'A π phase pulse on the initial |'+model.labels[initial]+'⟩ state is the central operation of the diffuser.',
   forward: 'The forward mixer completes this Grover iteration. Interference increases the marked amplitude.',
 };}
 
@@ -102,12 +102,12 @@ export function createGroverGeometry(root) {
       positionDot(nodes.preparedDot, prepared, 5.5); label(nodes.preparedLabel, prepared, 12, 3);
     }
 
-    const { target, kind, progress, state, startAmplitudes, stepKey } = frame;
+    const { target, initial, kind, progress, state, startAmplitudes, stepKey } = frame;
     const nextCurveKey = stepKey;
     if (nextCurveKey !== curveKey) {
       curveKey = nextCurveKey;
       const count = kind === 'inverse' ? 128*frame.model.inverseFactor : 128;
-      samples = Array.from({ length: count+1 }, (_, i) => projectGroverState(kind === 'input' ? startAmplitudes : evolveGate(startAmplitudes, kind, i / count, target), target).bloch.vector);
+      samples = Array.from({ length: count+1 }, (_, i) => projectGroverState(kind === 'input' ? startAmplitudes : evolveGate(startAmplitudes, kind, i / count, target, initial), target, initial).bloch.vector);
     }
     const prefix = samples.slice(0, Math.floor(progress * (samples.length-1)) + 1);
     prefix.push(state.bloch.vector);
@@ -150,21 +150,22 @@ export function createGroverGeometry(root) {
   nodes.resetView.addEventListener('click', () => orbit(defaultView.yaw, defaultView.pitch));
 
   return {
-    update({ target, kind = 'input', progress = 0, running = false, paused = false,
+    update({ target, initial = 0, kind = 'input', progress = 0, running = false, paused = false,
       iteration = 0, complete = false, amplitudes, startAmplitudes = amplitudes, stepKey = 'input' }) {
       progress = clamp01(progress);
       const key = `${stepKey}/${progress}/${running}/${paused}`;
       if (key === lastKey) return;
       lastKey = key;
       const model=modelOfState(amplitudes),{labels:LABELS,iterations:ITERATIONS}=model;
-      const state = projectGroverState(amplitudes, target);
-      frame = { model, target, kind, progress, state, startAmplitudes, stepKey };
+      const state = projectGroverState(amplitudes, target, initial);
+      frame = { model, target, initial, kind, progress, state, startAmplitudes, stepKey };
       draw();
       nodes.target.textContent = `Target |${LABELS[target]}⟩`;
       const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
-      nodes.status.textContent = complete ? 'Search complete' : `${round}${gateNames[kind]}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : kind !== 'input' ? ' · held' : ''}`;
+      const gateName = kind==='input'?'Input |'+LABELS[initial]+'⟩':gateNames[kind];
+      nodes.status.textContent = complete ? 'Search complete' : `${round}${gateName}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : kind !== 'input' ? ' · held' : ''}`;
       nodes.description.textContent = !state.bloch.vector ? 'The projection has zero weight, so its direction is undefined.'
-        : complete ? ITERATIONS+' Grover iterations reach '+(100*expectedProbability(ITERATIONS,model.side)).toFixed(3)+'% in the marked position–spin state. This sphere represents the search subspace.' : descriptions(model)[kind];
+        : complete ? ITERATIONS+' Grover iterations reach '+(100*expectedProbability(ITERATIONS,model.side)).toFixed(3)+'% in the marked position–spin state. This sphere represents the search subspace.' : descriptions(model,initial)[kind];
       nodes.markedValue.textContent = percent(state.targetProbability);
       nodes.weightValue.textContent = percent(state.bloch.weight);
       nodes.outsideValue.textContent = percent(state.outsideProbability);
@@ -172,11 +173,12 @@ export function createGroverGeometry(root) {
       nodes.normValue.textContent = state.bloch.vector ? '|r| = 1' : 'r undefined';
       nodes.markedBar.style.width = percent(state.targetProbability);
       nodes.weightBar.style.width = percent(state.bloch.weight);
-      nodes.liveDescription.textContent = `${gateNames[kind]}. The gold unit vector represents the normalized marked/unmarked projection. Subspace weight ${percent(state.bloch.weight)}; actual marked probability ${percent(state.targetProbability)}. Drag or use arrow keys to rotate the view.`;
+      nodes.liveDescription.textContent = `${gateName}. The gold unit vector represents the normalized marked/unmarked projection. Subspace weight ${percent(state.bloch.weight)}; actual marked probability ${percent(state.targetProbability)}. Drag or use arrow keys to rotate the view.`;
       root.dataset.kind = kind;
       root.dataset.iteration = String(iteration);
       root.dataset.progress = String(progress);
       root.dataset.target = String(target);
+      root.dataset.initial = String(initial);
       root.dataset.blochVector = JSON.stringify(state.bloch.vector);
       root.dataset.subspaceProbability = String(state.bloch.weight);
       root.dataset.conditionalMarked = String(state.bloch.conditionalMarked);

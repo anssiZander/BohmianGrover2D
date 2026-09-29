@@ -15,9 +15,9 @@
       <div class="row"><label for="gridSize">Grid size</label><input id="gridSize" type="range" min="2" max="5" step="1" value="4" list="gridSizes" aria-describedby="gridSummary"/><span id="gridSizeValue" class="val">4×4</span></div>
       <datalist id="gridSizes"><option value="2" label="2"></option><option value="3" label="3"></option><option value="4" label="4"></option><option value="5" label="5"></option></datalist>
       <p id="gridSummary" class="note">16 positions × 2 spin states = 32 states. Changing size resets the search.</p>
-      <div class="section">Choose the goal &amp; spin</div>
-      <div id="goalGrid" role="group" aria-label="Select a goal cell; click the selected cell again to flip its spin"></div>
-      <p id="targetSummary" class="note"></p><p class="note selectionHelp">Click a cell to select it. Click it again to flip ↑ / ↓.</p>
+      <div class="section">Choose the initial state &amp; spin</div>
+      <div id="initialGrid" role="group" aria-label="Select an initial cell; click the selected cell again to flip its spin"></div>
+      <p id="initialSummary" class="note"></p><p class="note selectionHelp">Green = initial. Click again to flip ↑ / ↓.<br>Choose the red goal on the main screen.</p>
       <div class="section">Gates</div>
       <div class="ops">
         <button id="next">Apply next operation</button>
@@ -46,7 +46,7 @@
   </aside>
 
   <main id="stage">
-    <header id="waveHeader"><div><span class="eyebrow" id="stateCountLabel">16 SPATIAL MODES × SPIN ½ · 32 STATES</span><h1>Grover with spin</h1></div><div class="targetBadge"><span id="waveTarget">MARKED |3,3,↑⟩</span><b id="waveProbability">0.0%</b></div></header>
+    <header id="waveHeader"><div><span class="eyebrow" id="stateCountLabel">16 SPATIAL MODES × SPIN ½ · 32 STATES</span><h1>Grover with spin</h1></div><div class="stateBadges"><div class="initialBadge"><span id="waveInitial">INITIAL |0,0,↑⟩</span></div><div class="targetBadge"><span id="waveTarget">MARKED |3,3,↑⟩</span><b id="waveProbability">0.0%</b></div></div></header>
     <div id="waveArea"><canvas id="c" aria-label="Two-component spinor wave: 16 spatial regions, each with spin up and down"></canvas><div id="waveLabels" aria-hidden="true"></div><div id="loading">Preparing the wave…</div><div id="error" role="alert" hidden></div></div>
     <footer id="waveFooter"><p id="gateDescription"></p><div class="flowToggles" role="group" aria-label="Probability flow overlays"><button id="spinToggle" aria-pressed="true">Spin directions</button><button id="currentToggle" aria-pressed="true">Current arrows</button><button id="particlesToggle" aria-pressed="true">Particles</button><button id="trailsToggle" aria-pressed="true">Trails</button></div><span id="waveLegend">Color = local spin: cyan ↑ · magenta ↓ · violet balanced. Gold dots follow the total current.</span></footer>
   </main>
@@ -57,15 +57,15 @@
       <div class="circuitBody">
         <svg class="circuitSvg" viewBox="0 0 840 216" role="img" aria-labelledby="circuitTitle circuitDescription">
           <title id="circuitTitle">Grover circuit with position and spin registers</title><desc id="circuitDescription">Preparation runs once. Oracle, inverse mixer, reference phase, and forward mixer repeat four times. The active gate is highlighted.</desc>
-          <line class="circuitWireGlow" x1="90" y1="48" x2="812" y2="48"/><line class="circuitWire" x1="90" y1="48" x2="812" y2="48"/><text class="circuitInput" x="6" y="54">|0⟩</text><text class="circuitBit" id="circuitXLabel" x="45" y="52">x (4)</text>
-          <line class="circuitWireGlow" x1="90" y1="92" x2="812" y2="92"/><line class="circuitWire" x1="90" y1="92" x2="812" y2="92"/><text class="circuitInput" x="6" y="98">|0⟩</text><text class="circuitBit" id="circuitYLabel" x="45" y="96">y (4)</text>
-          <line class="circuitWireGlow" x1="90" y1="136" x2="812" y2="136"/><line class="circuitWire" x1="90" y1="136" x2="812" y2="136"/><text class="circuitInput" x="6" y="142">|↑⟩</text><text class="circuitBit" x="45" y="140">spin</text>
+          <line class="circuitWireGlow" x1="90" y1="48" x2="812" y2="48"/><line class="circuitWire" x1="90" y1="48" x2="812" y2="48"/><text class="circuitInput" id="circuitInputX" x="6" y="54">|0⟩</text><text class="circuitBit" id="circuitXLabel" x="45" y="52">x (4)</text>
+          <line class="circuitWireGlow" x1="90" y1="92" x2="812" y2="92"/><line class="circuitWire" x1="90" y1="92" x2="812" y2="92"/><text class="circuitInput" id="circuitInputY" x="6" y="98">|0⟩</text><text class="circuitBit" id="circuitYLabel" x="45" y="96">y (4)</text>
+          <line class="circuitWireGlow" x1="90" y1="136" x2="812" y2="136"/><line class="circuitWire" x1="90" y1="136" x2="812" y2="136"/><text class="circuitInput" id="circuitInputSpin" x="6" y="142">|↑⟩</text><text class="circuitBit" x="45" y="140">spin</text>
           <g class="circuitGate future" data-circuit-kind="prepare"><rect class="gateBox" x="112" y="23" width="82" height="139" rx="9"/><text class="gateText" x="153" y="99">A</text><text class="gateCaption" x="153" y="180">PREPARE</text><text class="gateTick" x="179" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="oracle"><rect class="gateBox" x="231" y="23" width="82" height="139" rx="9"/><text class="gateText" x="272" y="99">Oω</text><text class="gateCaption" x="272" y="180">ORACLE</text><text class="gateTick" x="298" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="139" rx="9"/><text class="gateText" x="408" y="99">A†</text><text class="gateCaption" id="inverseCaption" x="408" y="180">WAIT 7T</text><text class="gateTick" x="434" y="39">✓</text></g>
-<g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="139" rx="9"/><text class="gateText" x="527" y="99">S₀</text><text class="gateCaption" x="527" y="180">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
+<g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="139" rx="9"/><text class="gateText" x="527" y="99">Sᵢ</text><text class="gateCaption" x="527" y="180">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="forward"><rect class="gateBox" x="605" y="23" width="82" height="139" rx="9"/><text class="gateText" x="646" y="99">A</text><text class="gateCaption" x="646" y="180">FORWARD</text><text class="gateTick" x="672" y="39">✓</text></g>
-          <path class="diffuserBrace" d="M355 190v6h344v-6"/><text class="diffuserLabel" x="527" y="211">DIFFUSER D = A S₀ A†</text>
+          <path class="diffuserBrace" d="M355 190v6h344v-6"/><text class="diffuserLabel" x="527" y="211">DIFFUSER D = A Sᵢ A†</text>
           <g id="circuitReadout" class="readoutNode"><circle cx="777" cy="80" r="33"/><path d="M756 89a24 24 0 0 1 42 0M777 86l15-18"/><text x="777" y="180">ANSWER</text></g>
         </svg>
         <div id="circuitMeta"><span id="circuitTarget">w = |3,3,↑⟩</span><span id="circuitStatus">Ready</span></div>
@@ -126,9 +126,9 @@
     </details>
       <div id="phaseLegendPanel" class="phaseLegend" hidden aria-label="Phase color legend"><div class="phaseWheel" role="img" aria-label="Rainbow phase wheel"></div><div class="phaseLabels"><b>Phase hue</b><br>red: 0<br>yellow-green: +π/2<br>cyan: ±π<br>violet-blue: −π/2</div></div>
       <details class="theory"><summary>Wave, spin &amp; guidance</summary>
-<p>One spinor Ψ = (ψ↑, ψ↓) has N×N orthogonal spatial packets in each spin channel. Labels are |x,y,spin⟩, with x and y from 0 to N−1. The input is |0,0,↑⟩. Each colored box contains overlapping tails, so its spatial probability differs from its logical-mode probability.</p>
+<p>One spinor Ψ = (ψ↑, ψ↓) has N×N orthogonal spatial packets in each spin channel. Labels are |x,y,spin⟩, with x and y from 0 to N−1. The input |i⟩ is selected in the green initial-state grid. Each colored box contains overlapping tails, so its spatial probability differs from its logical-mode probability.</p>
 <div class="math">A = U<sub>box</sub>(T) ⊗ R<sub>y</sub>(π/2)<br>A† = U<sub>box</sub>((2N−1)T) ⊗ R<sub>y</sub>(−π/2)</div>
-<p>The spatial mixer uses exact free-box evolution. T = T<sub>rev</sub>/(2N). The imposed uniform spin-only drive is reversed during the forward (2N−1)T wait. Oracle and reference pulses phase only one joint mode. The search uses the first optimal Grover peak: 2, 3, 4 or 5 iterations for grids of size 2, 3, 4 or 5.</p>
+<p>The spatial mixer uses exact free-box evolution. T = T<sub>rev</sub>/(2N). The imposed uniform spin-only drive is reversed during the forward (2N−1)T wait. The oracle phases the red goal |w⟩; the reference phases the selected green input |i⟩. Thus D = A Sᵢ A† reflects about A|i⟩. The search uses the first optimal Grover peak: 2, 3, 4 or 5 iterations for grids of size 2, 3, 4 or 5.</p>
 <div class="math">ρ = |ψ↑|² + |ψ↓|²<br>j<sub>P</sub> = (ℏ/m) Im(Ψ†∇Ψ) + (1/m) ∇×(ρs)<br>∇×(ρs) = ∇ρ × s + ρ ∇×s<br>v = j<sub>total</sub> / ρ</div>
 <p>The full spinor gradients include spin-texture effects. This planar model uses the in-plane magnetization current (ℏ/2m)(∂ᵧM<sub>z</sub>, −∂ₓM<sub>z</sub>), with M<sub>z</sub> = |ψ↑|² − |ψ↓|². It describes reduced planar flow, not all possible transverse motion in a three-dimensional trap.</p>
 <p>Free intervals use the Pauli current. Ideal mode-selective phase pulses are spatially nonlocal: we choose j<sub>total</sub> = j<sub>P</sub> + ∇u, with Δu = −∂ₜρ − ∇·j<sub>P</sub> and zero wall flux. This generalized guidance conserves density and retains spin circulation; it is not a unique local-Pauli implementation of those gates.</p>

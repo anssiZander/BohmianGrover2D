@@ -6,6 +6,7 @@ export const REVIVAL_TIME = 19.2;
 export const FREE_OMEGA = 2 * Math.PI / REVIVAL_TIME;
 export const HBAR_OVER_M = 2 * FREE_OMEGA / Math.PI ** 2;
 const models = new Map();
+const preparations = new Map();
 
 function sineOverlap(n,m,a,b) {
   if(n===m)return b-a-(Math.sin(2*n*Math.PI*b)-Math.sin(2*n*Math.PI*a))/(2*n*Math.PI);
@@ -29,7 +30,7 @@ export function gridModel(side=SIDE) {
     ...Array.from({length:iterations},(_,i)=>[
       {kind:'oracle',name:'Joint position–spin oracle',symbol:'Oω',iteration:i+1,duration:1.6},
       {kind:'inverse',name:'A† · forward '+inverseFactor+'T + inverse spin',symbol:'A†',iteration:i+1,duration:inverseTime},
-      {kind:'reference',name:'Reference phase |0,0,↑⟩',symbol:'S₀',iteration:i+1,duration:1.6},
+      {kind:'reference',name:'Reference phase on initial state',symbol:'Sᵢ',iteration:i+1,duration:1.6},
       {kind:'forward',name:'Forward · free T + spin rotation',symbol:'A',iteration:i+1,duration:mixTime},
     ]).flat(),
   ].map(Object.freeze));
@@ -82,15 +83,22 @@ export function evolveMixer(state,p,inverse=false) {
   // Positive-time spatial inverse uses the rest of one full box revival.
   return rotateSpin(evolveFree(state,(inverse?inverseFactor:1)*p),(inverse?-1:1)*Math.PI*p/2);
 }
+export function preparedStateFor(initial=0,side=SIDE) {
+  const model=gridModel(side);
+  if(initial===0)return model.preparedState;
+  const key=side+'/'+initial;
+  if(!preparations.has(key))preparations.set(key,evolveMixer(basisState(initial,side),1));
+  return preparations.get(key);
+}
 export function phasePulse(state,target,p) {
   const out=Float64Array.from(state),r=2*target,c=Math.cos(Math.PI*p),s=Math.sin(Math.PI*p);
   out[r]=c*state[r]+s*state[r+1];out[r+1]=c*state[r+1]-s*state[r];return out;
 }
-export function evolveGate(state,kind,progress,target) {
+export function evolveGate(state,kind,progress,target,initial=0) {
   if(kind==='prepare'||kind==='forward')return evolveMixer(state,progress);
   if(kind==='inverse')return evolveMixer(state,progress,true);
   if(kind==='oracle')return phasePulse(state,target,progress);
-  if(kind==='reference')return phasePulse(state,0,progress);
+  if(kind==='reference')return phasePulse(state,initial,progress);
   throw Error('Unknown gate: '+kind);
 }
 export function probabilities(state) {return Float64Array.from({length:state.length/2},(_,q)=>state[2*q]**2+state[2*q+1]**2);}
@@ -124,8 +132,8 @@ export function effectiveBlochState(marked,unmarked) {
   if(weight<1e-12)return {vector:null,weight,conditionalMarked:null};
   return {vector:[2*(mr*ur+mi*ui)/weight,2*(mr*ui-mi*ur)/weight,(m-u)/weight],weight:Math.min(1,weight),conditionalMarked:m/weight};
 }
-export function projectGroverState(state,target) {
-  const {stateCount,preparedState}=modelOfState(state),marked=[0,0],unmarked=[0,0];
+export function projectGroverState(state,target,initial=0) {
+  const {stateCount,side}=modelOfState(state),preparedState=preparedStateFor(initial,side),marked=[0,0],unmarked=[0,0];
   for(let q=0;q<stateCount;q++){
     const re=Math.sqrt(stateCount)*(preparedState[2*q]*state[2*q]+preparedState[2*q+1]*state[2*q+1]);
     const im=Math.sqrt(stateCount)*(preparedState[2*q]*state[2*q+1]-preparedState[2*q+1]*state[2*q]);
@@ -135,17 +143,24 @@ export function projectGroverState(state,target) {
   return {bloch,targetProbability:marked[0]**2+marked[1]**2,outsideProbability:Math.max(0,1-bloch.weight)};
 }
 export class SearchSimulation {
-  constructor(target=30,side=SIDE){this.model=gridModel(side);this.target=Math.min(target,this.model.stateCount-1);this.reset();}
-  reset(){this.amplitudes=basisState(0,this.model.side);this.completed=0;this.active=null;this.last=null;this.paused=false;this.autoplay=false;this.time=0;this.revision=(this.revision||0)+1;this.checkpoints=[];}
+  constructor(target=30,side=SIDE,initial=0){this.model=gridModel(side);this.target=Math.min(target,this.model.stateCount-1);this.initial=initial;this.reset();}
+  reset(){this.amplitudes=basisState(this.initial,this.model.side);this.completed=0;this.active=null;this.last=null;this.paused=false;this.autoplay=false;this.time=0;this.revision=(this.revision||0)+1;this.checkpoints=[];}
   setGridSize(side){
     if(!Number.isInteger(side)||side<2||side>MAX_SIDE)return false;
     if(side===this.model.side)return false;
-    const oldSide=this.model.side,q=this.target>>1,spin=this.target&1;
-    const x=Math.min(side-1,Math.floor(q/oldSide)),y=Math.min(side-1,q%oldSide);
-    this.model=gridModel(side);this.target=2*(side*x+y)+spin;this.reset();return true;
+    const oldSide=this.model.side;
+    const resize=q=>2*(side*Math.min(side-1,Math.floor((q>>1)/oldSide))+Math.min(side-1,(q>>1)%oldSide))+(q&1);
+    this.target=resize(this.target);this.initial=resize(this.initial);
+    this.model=gridModel(side);this.reset();return true;
   }
   setTarget(target){if(this.active||!Number.isInteger(target)||target<0||target>=this.model.stateCount)return false;this.target=target;this.reset();return true;}
-  startNext(){if(this.active||this.completed>=this.model.gates.length)return false;this.active={...this.model.gates[this.completed],index:this.completed,elapsed:0,progress:0,startAmplitudes:Float64Array.from(this.amplitudes)};return true;}
+  setInitial(initial){if(this.active||!Number.isInteger(initial)||initial<0||initial>=this.model.stateCount)return false;this.initial=initial;this.reset();return true;}
+  startNext(){
+    if(this.active||this.completed>=this.model.gates.length)return false;
+    this.active={...this.model.gates[this.completed],initial:this.initial,index:this.completed,elapsed:0,progress:0,startAmplitudes:Float64Array.from(this.amplitudes)};
+    if(this.active.kind==='reference')this.active.name='Reference phase |'+this.model.labels[this.initial]+'⟩';
+    return true;
+  }
   runFull(){if(this.active)return false;this.reset();this.autoplay=true;return this.startNext();}
   advance(dt){
     if(this.paused||!Number.isFinite(dt)||dt<=0)return;let remaining=dt;
@@ -153,7 +168,7 @@ export class SearchSimulation {
       const gate=this.active,step=Math.min(remaining,gate.duration-gate.elapsed);
       gate.elapsed+=step;this.time+=step;remaining-=step;gate.progress=Math.min(1,gate.elapsed/gate.duration);
       if(gate.duration-gate.elapsed<1e-10)gate.progress=1;
-      this.amplitudes=evolveGate(gate.startAmplitudes,gate.kind,gate.progress,this.target);
+      this.amplitudes=evolveGate(gate.startAmplitudes,gate.kind,gate.progress,this.target,this.initial);
       if(gate.progress<1)break;
       this.last=gate;this.active=null;this.completed++;
       this.checkpoints.push({step:this.completed,kind:gate.kind,iteration:gate.iteration,targetProbability:probabilities(this.amplitudes)[this.target]});
@@ -163,6 +178,7 @@ export class SearchSimulation {
   snapshot(){
     const gate=this.active||this.last,{side,stateCount,iterations,mixTime,inverseTime}=this.model;
     return {side,stateCount,iterations,mixTime,inverseTime,target:this.target,targetRegion:this.target>>1,targetSpin:this.target&1,
+      initial:this.initial,initialRegion:this.initial>>1,initialSpin:this.initial&1,
       completed:this.completed,busy:!!this.active,paused:this.paused,time:this.time,kind:gate?.kind||'input',iteration:gate?.iteration||0,
       progress:this.active?.progress??(this.last?1:0),norm:normSquared(this.amplitudes),probabilities:Array.from(probabilities(this.amplitudes)),
       amplitudes:Array.from(this.amplitudes),spin:spinSummary(this.amplitudes),checkpoints:this.checkpoints.map(x=>({...x}))};

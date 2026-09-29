@@ -1,5 +1,59 @@
 # Verification — SPINMultiRegionFree
 
+## Selectable initial state and green start outline — 2026-09-29
+
+The sidebar now selects the initial joint position-spin state, while the
+canvas independently selects the goal. Repeated clicks flip the spin of the
+selected input or goal, respectively. The start cell has a green outline;
+the goal keeps its red outline. Coincident positions show an inner green
+outline, an outer red outline, and both spin labels. The shader draws these
+outlines even with grid labels hidden, so they also appear in recordings.
+
+Reset and Run full search retain both choices. Resizing clamps both positions
+and retains their independent spins. Selection is locked during running or
+paused gates. The selected input feeds wave initialization, each axis's Born
+sampler, the reference projector and its conserved current, and the prepared
+state used by the Bloch projection. Circuit inputs, reference labels and the
+reference pulse's illuminated cell update together. Gate durations and
+iteration counts are unchanged.
+
+**46/46 numerical tests pass**: the existing 28 checks plus 18 in
+`tests/initial-state.test.mjs`. The added tests cover all 3,912 input/goal
+pairs over grid sizes 2, 3, 4 and 5, including equal inputs/goals and both
+spins. They check every amplification checkpoint and total search duration.
+Continuous states from every initial state are compared with independent
+matrix propagation; maximum amplitude difference is 1.544e-13. Independent
+finite-difference continuity residual is 1.353e-7. Every spatial input has a
+reproducible 4,000-particle Born-sampling check, including equal distributions
+for opposite input spins. Selection, reset, locking and resize checks pass.
+
+Actual browser checks ran on NVIDIA GeForce RTX 4070 Ti SUPER, ANGLE / D3D11,
+with the production 512x512 float spinor texture:
+
+- **Wave/UI: 384/384**, including 184 GPU wave readbacks, displaced input
+  packets of both spins, all gate interiors, independent selectors, circuit
+  and Bloch references, and pixel readbacks of the green/red outlines.
+  Maximum wave component error 4.450e-6; integrated norm error 5.959e-7;
+  modal amplitude error 3.743e-13; Bloch/readout error 1.177e-12.
+- **Flow: 449/449**, including 4,000 particles at every grid size from
+  displaced input packets, every gate's current and density, region counts,
+  and 8x8 histograms. A complete 16,000-particle 5x5 run uses the same
+  spin-down state for input and goal. Maximum current component error
+  5.537e-5; density error 5.335e-5; region sampling difference 2.257 percentage
+  points; histogram total variation 5.354%. Failed steps and invalid or
+  out-of-box particles: 0. Maximum sampled clock lag: 3.331e-16.
+- **Trails: 11/11**. Decay, pause, reset, trajectory independence and recording
+  exposure checks retain their previous results.
+- All completed fixtures report WebGL error code 0. Static verification
+  covers 74 DOM references and 18 shader/include files. JavaScript syntax
+  and whitespace checks pass.
+
+The fixture HTML now splits its closing-body tag inside JavaScript strings:
+VS Code Live Server otherwise injects its reload script into those strings,
+causing a syntax error before testing begins. The corrected fixtures were
+run on the existing Live Server at port 5501. Visual review covered both
+separate and coincident initial/goal cells with the new green selection.
+
 ## Selectable 2x2 through 5x5 grids — 2026-09-26
 
 The grid-size slider selects 2, 3, 4, or 5 columns and rows. The runtime model,

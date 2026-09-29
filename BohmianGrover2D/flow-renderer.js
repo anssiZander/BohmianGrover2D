@@ -8,7 +8,7 @@ const TRAIL_EXPOSURE = .18;
 export class FlowRenderer {
   constructor(gl, grid, loadShader, createProgram) {
     Object.assign(this,{gl,grid,loadShader,createProgram});
-    this.side=4;this.count=4000;this.index=0;this.trailIndex=0;this.gate=null;this.newGate=false;
+    this.side=4;this.initial=0;this.count=4000;this.index=0;this.trailIndex=0;this.gate=null;this.newGate=false;
     this.trailSize=1024;this.trailScale=1;this.elapsed=0;this.statsTime=-Infinity;
   }
   async init(vertex) {
@@ -83,17 +83,17 @@ export class FlowRenderer {
     for(const fbo of this.trailFbos) {gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
-  reset(count=this.count,side=this.side) {
-    this.side=side;this.newGate=false;this.stats=null;
+  reset(count=this.count,side=this.side,initial=this.initial) {
+    this.side=side;this.initial=initial;this.newGate=false;this.stats=null;
     this.count=count;this.gate=null;this.data=null;this.index=0;this.elapsed=0;this.statsTime=-Infinity;
-    const gl=this.gl,states=sampleInitialParticles(count,73991,side);
+    const gl=this.gl,states=sampleInitialParticles(count,73991,side,initial);
     for(const buffer of this.buffers) {gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,states,gl.DYNAMIC_COPY);}
     gl.bindBuffer(gl.ARRAY_BUFFER,null);this.clearTrails();
   }
   prepare(gate,target) {
     if(this.gate===gate||!gate) return;
     this.gate=gate;this.newGate=true;
-    this.data=gateFlow(gate.startAmplitudes,gate.kind,target,gate.duration);
+    this.data=gateFlow(gate.startAmplitudes,gate.kind,target,gate.duration,gate.initial??this.initial);
     if(this.data.mode==='free') return;
     const gl=this.gl,u=this.basis.uniforms;
     gl.disable(gl.BLEND);gl.bindVertexArray(this.emptyVao);gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);

@@ -25,7 +25,7 @@ async function run() {
     const error=Math.max(...stats.bins.map((n,q)=>Math.abs(n/stats.count-expected[q])));
     maxRegionError=Math.max(maxRegionError,error);maxLag=Math.max(maxLag,stats.maxLag);
     maxFailures=Math.max(maxFailures,stats.failures);maxInvalid=Math.max(maxInvalid,stats.invalid);
-    snapshots.push({name,target:state.target,progress:state.progress,error,lag:stats.maxLag,failures:stats.failures,lagging:stats.lagging,slowest:stats.slowest});
+    snapshots.push({name,initial:state.initial,target:state.target,progress:state.progress,error,lag:stats.maxLag,failures:stats.failures,lagging:stats.lagging,slowest:stats.slowest});
     check(`${name}: particle regions match Born density`,error<.03&&stats.invalid===0&&stats.maxLag<2e-6&&stats.failures===0,
       `max region ${(100*error).toFixed(3)}pp, lag ${stats.maxLag.toExponential(2)}, failures ${stats.failures}`);
     if(full) {
@@ -52,10 +52,10 @@ async function run() {
   }
   for(const side of [2,3,4,5]){
     api.setGridSize(side);
-    const target=2*side*side-1,model=gridModel(side);
-    api.setTarget(target);distribution(side+'x'+side+' initial',true);
+    const target=2*side*side-1,model=gridModel(side),initial=2*(side*(side-1)+Math.floor(side/2))+(side%2);
+    api.setInitial(initial);api.setTarget(target);distribution(side+'x'+side+' initial '+initial,true);
     for(const [index,gate] of model.gates.entries()){
-      const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,target,gate.duration);
+      const start=api.state().amplitudes,reference=gateFlow(start,gate.kind,target,gate.duration,initial);
       api.startNext();let prior=0;
       for(const p of [.25,.5,1]){
         await advance((p-prior)*gate.duration);prior=p;
@@ -69,12 +69,12 @@ async function run() {
       }
     }
   }
-  api.setParticleCount(16000);api.setGridSize(5);api.setTarget(49);api.runFull();
+  api.setParticleCount(16000);api.setGridSize(5);api.setInitial(49);api.setTarget(49);api.runFull();
   await advance(gridModel(5).gates.reduce((sum,g)=>sum+g.duration,0));
   check('Maximum 5x5 ensemble uses 16000 particles',api.particleStats().count===16000);
-  distribution('5x5 maximum particle count, full search',true);
+  distribution('5x5 maximum particle count, coincident initial and goal, full search',true);
   api.setParticleCount(4000);api.setGridSize(2);api.setTarget(6);api.startNext();
-  const first=gridModel(2).gates[0],smallReference=gateFlow(api.state().amplitudes,first.kind,6,first.duration);
+  const first=gridModel(2).gates[0],smallReference=gateFlow(api.state().amplitudes,first.kind,6,first.duration,api.state().initial);
   await advance(first.duration*.5);field(smallReference,.5,'5x5 to 2x2 resized GPU buffers');distribution('5x5 to 2x2 resized ensemble',true);
   api.reset();api.startNext();await advance(.6);const visible=api.readParticles();
   api.reset();document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();document.getElementById('spinToggle').click();

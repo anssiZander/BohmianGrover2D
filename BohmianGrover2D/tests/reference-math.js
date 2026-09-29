@@ -1,12 +1,12 @@
 // Independent dense complex Hamiltonian, exponentiated by scaled Taylor
 // series and squaring. This imports no production propagator or basis data.
 const weight=(j,n,side)=>(n===side?1/Math.sqrt(side):Math.sqrt(2/side))*Math.sin((j+.5)*n*Math.PI/side);
-export function generator(kind,target,side=4) {
+export function generator(kind,target,side=4,initial=0) {
   const N=2*side*side;
   return Array.from({length:N},(_,row)=>Float64Array.from({length:2*N},(_,index)=>{
     const col=index>>1,imag=index&1;
     if(kind==='oracle'||kind==='reference')
-      return !imag&&row===col&&row===(kind==='oracle'?target:0)?Math.PI:0;
+      return !imag&&row===col&&row===(kind==='oracle'?target:initial)?Math.PI:0;
     const qr=row>>1,qc=col>>1;
     if(imag) return qr===qc&&(row&1)!==(col&1)?(row&1?1:-1)*(kind==='inverse'?-1:1)*Math.PI/4:0;
     if((row&1)!==(col&1))return 0;
@@ -36,10 +36,10 @@ function square(a) {
     out[z]+=a[x]*a[y]-a[x+1]*a[y+1];out[z+1]+=a[x]*a[y+1]+a[x+1]*a[y];
   }return out;
 }
-export function referenceStep(state,kind,p,target) {
+export function referenceStep(state,kind,p,target,initial=0) {
   const N=state.length/2,side=Math.sqrt(N/2);
   if(kind==='oracle'||kind==='reference'){
-    const out=Float64Array.from(state),q=kind==='oracle'?target:0,c=Math.cos(Math.PI*p),s=Math.sin(Math.PI*p);
+    const out=Float64Array.from(state),q=kind==='oracle'?target:initial,c=Math.cos(Math.PI*p),s=Math.sin(Math.PI*p);
     out[2*q]=c*state[2*q]+s*state[2*q+1];out[2*q+1]=c*state[2*q+1]-s*state[2*q];return out;
   }
   const key=side+'/'+kind+'/'+p;

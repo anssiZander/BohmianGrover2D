@@ -8,6 +8,7 @@ uniform float uVisGamma;
 uniform int uSide;
 uniform int uShowGrid;
 uniform int uTarget;
+uniform int uInitial;
 uniform int uWaveView;
 uniform int uGateRegion;
 uniform float uGateFlash;
@@ -66,6 +67,18 @@ void main() {
   float border = within * (1.0 - smoothstep(.7 * uPixelSize, 2.2 * uPixelSize, edge));
   col = mix(col, col * vec3(1.06,.76,.80) + vec3(.13,.005,.012), .20 * regionMask(uv, uTarget));
   col += vec3(1.0,.015,.035) * (.34 * glow + 1.05 * border);
+  // An inner green outline keeps both choices visible when they share a cell.
+  d = abs(uv - regionCenter(uInitial));
+  float initialInset = uInitial == uTarget ? 8.0 : 2.0;
+  inset = halfCell - initialInset * uPixelSize;
+  edge = min(abs(d.x - inset), abs(d.y - inset));
+  float extent = min(halfCell, inset + 2.2 * uPixelSize);
+  within = step(d.x, extent) * step(d.y, extent);
+  glow = within * (1.0 - smoothstep(.004, .025, edge));
+  border = within * (1.0 - smoothstep(.7 * uPixelSize, 2.2 * uPixelSize, edge));
+  col += vec3(.025,.11,.035) * .18 * regionMask(uv, uInitial);
+  col += vec3(.08,1.0,.22) * .28 * glow;
+  col = mix(col,vec3(.08,1.0,.22),.94*border);
   if (uGateRegion >= 0) col += vec3(1.0,.28,.72) * regionMask(uv, uGateRegion) * uGateFlash * .16;
   fragColor = vec4(col, 1.0);
 }
