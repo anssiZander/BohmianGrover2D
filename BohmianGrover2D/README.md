@@ -18,13 +18,24 @@ Open http://127.0.0.1:8835/ in a desktop WebGL2 browser. No dependencies or buil
   Changing it resets the wave, particles, trails, and search checkpoints,
   including during playback. It keeps both chosen spins and clamps the initial
   and goal positions into the new grid. The default remains 4x4.
-- The **left grid selects the initial position and spin**, highlighted green.
-  **The main wave selects the goal**, highlighted red. In each selector, click
-  the selected cell again to flip its spin; moving to another cell keeps that
-  selector's chosen spin. The two selections are independent.
+- **Choose both states on the main wave**, following the guide above it.
+  First click to select the initial position (green), then use **Next: choose
+  goal** and click to select the goal (red). Click the currently selected cell
+  again to flip that state's spin; moving to another cell keeps its spin.
+  **Back: initial** revisits the first step, **Done** finishes selection, and
+  **Choose states** reopens the guide. The two selections are independent.
+  The sidebar grid has been removed. You can also run immediately without
+  choosing manually: the existing default input |0,0,up> and goal |3,3,up>
+  remain selected on the default 4x4 grid.
   Selection resets the search and is locked during a running or paused gate.
-  Reset and Run full search retain both choices. If the positions coincide,
+  Reset retains both choices and reopens the initial-state guide. Run full
+  search retains both choices and skips any unfinished selection steps.
+  Resizing also reopens the guide. If the positions coincide,
   the green outline sits inside the red outline and both spin labels remain.
+- **Initial / goal markers**, below the wave, toggles both colored outlines,
+  cell tints, gate flashes, and start/goal tags independently of **Grid labels**.
+  It affects recordings too. Hiding markers leaves the selected states, wave,
+  particle motion, and clock unchanged; the state badges above remain visible.
 - **Apply next operation** prepares the state and then steps through the gates.
   **Run full search**, beside it, runs the complete size-dependent search.
   Manual checkpoints and Pause freeze the simulation clock and trail history.

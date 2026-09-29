@@ -28,6 +28,18 @@ async function run(){
     const side=api.state().side,canvas=doc.getElementById('c'),r=canvas.getBoundingClientRect();
     canvas.dispatchEvent(new MouseEvent('click',{clientX:r.left+r.width*(Math.floor(region/side)+.5)/side,clientY:r.bottom-r.height*(region%side+.5)/side,bubbles:true}));
   }
+  const guide=doc.getElementById('selectionGuide'),selectionNext=doc.getElementById('selectionNext'),selectionBack=doc.getElementById('selectionBack'),markersToggle=doc.getElementById('markersToggle');
+  check('Sidebar selector removed; guide starts with the input and keeps existing defaults',
+    !doc.getElementById('initialGrid')&&!doc.getElementById('initialSummary')&&guide.dataset.step==='initial'&&api.state().initial===0&&api.state().target===30);
+  const waveRect=doc.getElementById('waveArea').getBoundingClientRect();
+  check('Guide is above the main grid and marker toggle below it',guide.getBoundingClientRect().bottom<=waveRect.top&&markersToggle.getBoundingClientRect().top>=waveRect.bottom);
+  doc.getElementById('full').click();
+  check('Full search starts immediately with the defaults, without manual selection',api.state().busy&&api.state().initial===0&&api.state().target===30&&guide.dataset.step==='ready');
+  api.reset();selectionNext.click();selectionNext.click();
+  const defaults=JSON.stringify(api.state());clickWave(4);
+  check('Skipping both selections preserves defaults; finished guide prevents accidental edits',guide.dataset.step==='ready'&&JSON.stringify(api.state())===defaults);
+  selectionNext.click();
+  check('Choose states reopens the initial-state guide without resetting the simulation',guide.dataset.step==='initial'&&JSON.stringify(api.state())===defaults);
   function inspect(expected,name,target,side,initial=api.state().initial){
     const actual=api.state(),pixels=api.readWave(),grid=actual.grid,dx=1/(grid-1);
     let norm=0,fieldError=0;
@@ -58,20 +70,26 @@ async function run(){
     api.setInitial(0);api.setTarget(target-1);
     check(side+'x'+side+': correct grid, dimensions, timing and iterations',
       api.state().side===side&&api.state().stateCount===count&&
-      doc.querySelectorAll('#initialGrid button').length===side*side&&doc.querySelectorAll('#waveLabels [data-region]').length===side*side&&
+      doc.querySelectorAll('#waveLabels [data-region]').length===side*side&&guide.dataset.step==='initial'&&
       doc.getElementById('iterationTrack').children.length===rounds&&
       doc.getElementById('inverseCaption').textContent==='WAIT '+(2*side-1)+'T'&&
       doc.getElementById('circuitXLabel').textContent==='x ('+side+')');
     const expectedOrder=Array.from({length:side*side},(_,i)=>side*(i%side)+side-1-Math.floor(i/side));
-    check(side+'x'+side+': both grids have the same coordinate order',
-      difference([...doc.querySelectorAll('#initialGrid button')].map(b=>Number(b.dataset.initial)),expectedOrder)===0&&
-      getComputedStyle(doc.getElementById('initialGrid')).gridTemplateColumns.split(' ').length===side);
-    const start=doc.querySelector('#initialGrid [data-initial="'+initialRegion+'"]');
-    start.click();check(side+'x'+side+': sidebar changes only the input position',api.state().initial===initial-1&&api.state().target===target-1);
-    start.click();check(side+'x'+side+': repeat sidebar click selects initial spin down',api.state().initial===initial&&api.state().target===target-1);
-    start.click();check(side+'x'+side+': next sidebar repeat selects initial spin up',api.state().initial===initial-1);start.click();
+    check(side+'x'+side+': main grid keeps its coordinate order',
+      difference([...doc.querySelectorAll('#waveLabels [data-region]')].map(b=>Number(b.dataset.region)),expectedOrder)===0&&
+      getComputedStyle(doc.getElementById('waveLabels')).gridTemplateColumns.split(' ').length===side);
+    clickWave(initialRegion);check(side+'x'+side+': first step changes only the input position',api.state().initial===initial-1&&api.state().target===target-1);
+    clickWave(initialRegion);check(side+'x'+side+': repeat initial click selects spin down',api.state().initial===initial&&api.state().target===target-1);
+    clickWave(initialRegion);check(side+'x'+side+': next initial repeat selects spin up',api.state().initial===initial-1);clickWave(initialRegion);
+    selectionNext.click();
+    check(side+'x'+side+': guide advances to goal without changing either choice',guide.dataset.step==='goal'&&api.state().initial===initial&&api.state().target===target-1);
+    selectionBack.click();
+    check(side+'x'+side+': back returns to the input with both choices intact',guide.dataset.step==='initial'&&api.state().initial===initial&&api.state().target===target-1);
+    selectionNext.click();
     clickWave(side*side-1);
     check(side+'x'+side+': wave click flips only target spin',api.state().target===target&&api.state().initial===initial);
+    selectionNext.click();
+    check(side+'x'+side+': Done finishes the guide and enables both run controls',guide.dataset.step==='ready'&&!doc.getElementById('next').disabled&&!doc.getElementById('full').disabled);
     check(side+'x'+side+': selected input is reflected in the circuit, state and labels',
       doc.getElementById('circuitInputX').textContent==='|'+Math.floor(initialRegion/side)+'⟩'&&
       doc.getElementById('circuitInputY').textContent==='|'+initialRegion%side+'⟩'&&doc.getElementById('circuitInputSpin').textContent==='|↓⟩'&&
@@ -81,7 +99,7 @@ async function run(){
     for(const [index,gate] of plan.entries()){
       doc.getElementById('next').click();
       check(side+'x'+side+' gate '+index+': next starts the correct gate and locks both selections',
-        api.state().kind===gate.kind&&[...doc.querySelectorAll('#initialGrid button')].every(b=>b.disabled)&&api.setTarget(0)===false&&api.setInitial(0)===false);
+        api.state().kind===gate.kind&&selectionNext.disabled&&selectionBack.disabled&&api.setTarget(0)===false&&api.setInitial(0)===false);
       if(gate.kind==='reference')check(side+'x'+side+' gate '+index+': reference names the chosen input',
         doc.getElementById('stageStatus').textContent.includes('|'+Math.floor(initialRegion/side)+','+initialRegion%side+',↓⟩'));
       let prior=0;
@@ -90,6 +108,7 @@ async function run(){
         inspect(referenceStep(expected,gate.kind,p,target,initial),side+'x'+side+' '+gate.kind+' '+index+' at '+p,target,side);
         if(p===.5&&index<3){
           doc.getElementById('pause').click();const held=JSON.stringify(api.state());
+          selectionNext.click();clickWave(0);
           api.advanceTime(2);api.renderRecordingFrame({fps:60});
           check(side+'x'+side+' gate '+index+': pause freezes state and recording clock',JSON.stringify(api.state())===held);
           doc.getElementById('pause').click();
@@ -103,6 +122,7 @@ async function run(){
     check(side+'x'+side+': exact expected final probability and completed rounds',
       Math.abs(api.state().probabilities[target]-expectedP(rounds,side))<2e-12&&api.state().checkpoints.filter(g=>g.kind==='forward').length===rounds);
     api.setTarget(0);
+    selectionNext.click();selectionNext.click();
     clickWave(0);
     check(side+'x'+side+': clicking the selected wave cell flips spin',api.state().target===1&&api.state().initial===initial);
     api.setInitial(initial-1);api.setTarget(0);doc.getElementById('full').click();api.advanceTime(1000);
@@ -114,7 +134,7 @@ async function run(){
   }
   api.reset();api.startNext();api.advanceTime(.3);api.togglePause();size(2);
   check('Resizing a paused gate resets state, particles, clock and history',
-    api.state().side===2&&!api.state().busy&&!api.state().paused&&api.state().time===0&&api.state().completed===0&&
+    guide.dataset.step==='initial'&&api.state().side===2&&!api.state().busy&&!api.state().paused&&api.state().time===0&&api.state().completed===0&&
     api.state().amplitudes.length===16&&api.state().checkpoints.length===0&&api.readParticles().every((v,i)=>i%4<2||v===0));
   size(5);api.startNext();api.advanceTime(.2);size(3);
   check('Resizing a running gate resets safely',api.state().side===3&&!api.state().busy&&api.state().time===0);
@@ -135,12 +155,38 @@ async function run(){
   }
   const red=borderColor(4,2),green=borderColor(4,8);
   check('Shared cell has separate red outer and green inner GPU outlines with labels off',red[0]>red[1]+80&&green[1]>green[0]+80,JSON.stringify({red,green}));
+  const heldSelection=JSON.stringify(api.state()),heldParticles=api.readParticles(),heldWave=api.readWave();
+  markersToggle.click();
+  const hiddenRed=borderColor(4,2),hiddenGreen=borderColor(4,8);
+  check('Marker toggle removes both GPU outlines, including coincident cells',difference(red,hiddenRed)>1&&difference(green,hiddenGreen)>80,JSON.stringify({red,green,hiddenRed,hiddenGreen}));
+  check('Marker toggle hides start/goal labels and emphasis, preserving wave, particles and choices',
+    markersToggle.getAttribute('aria-pressed')==='false'&&!doc.querySelector('.waveCell.initial,.waveCell.marked,.goalSpin')&&
+    [...doc.querySelectorAll('.initialTag,.goalTag')].every(el=>el.textContent==='')&&
+    JSON.stringify(api.state())===heldSelection&&difference(heldParticles,api.readParticles())===0&&api.readWave().every((v,i)=>v===heldWave[i]));
+  function readCanvas(){
+    api.advanceTime(0);const pixels=new Uint8Array(canvas.width*canvas.height*4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return pixels;
+  }
+  // With markers hidden, moving only the goal must leave every displayed pixel unchanged.
+  const hiddenFrame=readCanvas();api.setTarget(0);
+  check('Hidden markers leave no goal tint anywhere in the frame',readCanvas().every((v,i)=>v===hiddenFrame[i]));
+  api.setTarget(8);markersToggle.click();
+  check('Marker toggle restores both outlines and their spin labels',difference(red,borderColor(4,2))===0&&difference(green,borderColor(4,8))===0&&
+    doc.querySelector('.waveCell.initial .initialTag').textContent==='START ↓'&&doc.querySelector('.waveCell.marked .goalTag').textContent==='GOAL ↑');
   api.setInitial(0);const separate=borderColor(0,2);
   check('Moving input keeps a green GPU outline at the new cell',separate[1]>separate[0]+80,JSON.stringify(separate));
   for(const id of ['particlesToggle','currentToggle','spinToggle','gridToggle'])doc.getElementById(id).click();
   size(4);api.reset();api.startNext();api.renderRecordingFrame({fps:60});
   check('Recording shares the selected grid clock',Math.abs(api.state().time-1/60)<1e-14);
+  api.togglePause();const paused=JSON.stringify(api.state()),pausedParticles=api.readParticles();markersToggle.click();api.renderRecordingFrame({fps:60});
+  check('Markers can be hidden during a paused recording without altering physics or time',markersToggle.getAttribute('aria-pressed')==='false'&&JSON.stringify(api.state())===paused&&difference(pausedParticles,api.readParticles())===0);
+  doc.getElementById('gridToggle').click();
+  check('Grid and markers can both be hidden',doc.getElementById('waveLabels').hidden&&markersToggle.getAttribute('aria-pressed')==='false');
+  doc.getElementById('gridToggle').click();
+  check('Grid labels and colored markers have independent toggles',!doc.getElementById('waveLabels').hidden&&markersToggle.getAttribute('aria-pressed')==='false'&&!doc.querySelector('.waveCell.initial,.waveCell.marked'));
+  markersToggle.click();
   api.reset();
+  check('Reset reopens the guide with markers restored and both selections retained',guide.dataset.step==='initial'&&markersToggle.getAttribute('aria-pressed')==='true'&&api.state().initial===JSON.parse(paused).initial&&api.state().target===JSON.parse(paused).target);
   const gpu=api.gpuInfo();check('Production WebGL2 reports no errors',gpu.error===0);
   const report={passed:results.filter(r=>r.pass).length,total:results.length,waveChecks,maxWaveError,maxNormError,maxAmplitudeError,maxBlochError,gpu,failures:results.filter(r=>!r.pass)};
   panel.dataset.report=JSON.stringify(report);panel.dataset.done='true';panel.textContent=JSON.stringify(report,null,2);api.endFrameRecording();

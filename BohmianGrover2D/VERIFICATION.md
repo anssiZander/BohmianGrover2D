@@ -1,5 +1,35 @@
 # Verification — SPINMultiRegionFree
 
+## Guided canvas selection and optional markers — 2026-09-29
+
+The sidebar grid is removed. A guide above the main wave selects the initial
+state first, then the goal. Each step retains repeat-click spin flipping;
+Back revisits the input, Done finishes, and Choose states reopens selection.
+Both run buttons work immediately with the current choices, including the
+unchanged default input |0,0,up> and goal |3,3,up>. Reset and resize reopen
+the input step. Running and paused gates lock selection.
+
+The Initial / goal markers toggle below the wave hides the shader outlines,
+tints and gate flashes, plus the DOM start/goal tags and target emphasis.
+Grid labels have an independent toggle. The shader setting also applies to
+the recording render path, without changing wave evolution or guidance.
+
+**409/409 production browser checks pass**, on NVIDIA GeForce RTX 4070 Ti
+SUPER, ANGLE / D3D11. The updated fixture covers all four grid sizes, both
+selection steps and spins, backwards navigation, immediate default runs,
+finished-selection click protection, running/paused locks, resize/reset,
+coincident markers, and exact wave/particle/time preservation when toggling
+markers. GPU pixel readbacks confirm both outlines disappear and reappear;
+with markers hidden, moving only the goal leaves every canvas pixel unchanged.
+The paused recording path and independent grid-label toggle also pass.
+
+The existing 184 GPU wave readbacks remain in this fixture: maximum wave
+component error 4.450e-6, integrated norm error 5.959e-7, modal amplitude
+error 3.743e-13, and Bloch/readout error 1.177e-12. WebGL error code: 0.
+JavaScript syntax, whitespace checks, 78 DOM references and all 18 shader
+sources pass static checks. The separate numerical, current-field and trail
+suites below were not rerun for this interface-only change.
+
 ## Selectable initial state and green start outline — 2026-09-29
 
 The sidebar now selects the initial joint position-spin state, while the
