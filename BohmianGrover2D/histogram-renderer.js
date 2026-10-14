@@ -1,0 +1,266 @@
+// The only geometry is a board and probability columns. WebGL supplies real
+// perspective and depth testing; the visible 2D canvas composites crisp labels
+// onto that render, so a recording includes exactly the same view.
+export const DEFAULT_VIEW = Object.freeze({ yaw: .62, elevation: .63, zoom: 1 });
+const FOV = 40 * Math.PI / 180;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+const normalize = a => { const n = Math.hypot(...a); return a.map(v => v / n); };
+export function columnCenter(q, side) { return [Math.floor(q / side) - (side - 1) / 2, 0, (side - 1) / 2 - q % side]; }
+export function columnHeight(probability, side) { return clamp(probability, 0, 1) * side * .92; }
+
+function multiply(a, b) {
+  return Float32Array.from({ length: 16 }, (_, i) => {
+    const row = i % 4, col = Math.floor(i / 4);
+    return [0, 1, 2, 3].reduce((sum, k) => sum + a[4 * k + row] * b[4 * col + k], 0);
+  });
+}
+export function cameraFor(view, width, height, side) {
+  const { yaw, elevation, zoom } = view, aspect = width / height;
+  const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
+  const up = [-Math.sin(yaw) * Math.sin(elevation), Math.cos(elevation), -Math.cos(yaw) * Math.sin(elevation)];
+  const back = [Math.sin(yaw) * Math.cos(elevation), Math.sin(elevation), Math.cos(yaw) * Math.cos(elevation)];
+  const target = [0, side * .28, 0];
+  const halfFov = Math.atan(Math.tan(FOV / 2) * Math.min(1, aspect));
+  // Leave room for the probability ruler even on a narrow phone viewport.
+  const distance = side * (aspect < 1 ? 1.15 : 1.03) / Math.sin(halfFov) / zoom;
+  const eye = target.map((v, i) => v + distance * back[i]);
+  const viewMatrix = [right[0], up[0], back[0], 0, right[1], up[1], back[1], 0,
+    right[2], up[2], back[2], 0, -dot(right, eye), -dot(up, eye), -dot(back, eye), 1];
+  const f = 1 / Math.tan(FOV / 2), near = .1, far = 200;
+  const projection = [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1,
+    0, 0, 2 * far * near / (near - far), 0];
+  return { matrix: multiply(projection, viewMatrix), eye, right, up, back, width, height, f };
+}
+export function project(point, camera) {
+  const v = [...point, 1], m = camera.matrix;
+  const c = [0, 1, 2, 3].map(row => v.reduce((sum, n, col) => sum + m[4 * col + row] * n, 0));
+  return { x: (c[0] / c[3] + 1) * camera.width / 2, y: (1 - c[1] / c[3]) * camera.height / 2,
+    depth: c[2] / c[3], visible: c[3] > 0 && Math.abs(c[2]) <= c[3] };
+}
+export function screenRay(x, y, camera) {
+  const dx = (2 * x - camera.width) / (camera.height * camera.f);
+  const dy = (camera.height - 2 * y) / (camera.height * camera.f);
+  return normalize(camera.right.map((v, i) => dx * v + dy * camera.up[i] - camera.back[i]));
+}
+export function rayBox(origin, direction, lo, hi) {
+  let near = 0, far = Infinity;
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(direction[i]) < 1e-12) { if (origin[i] < lo[i] || origin[i] > hi[i]) return Infinity; continue; }
+    let a = (lo[i] - origin[i]) / direction[i], b = (hi[i] - origin[i]) / direction[i];
+    if (a > b) [a, b] = [b, a];
+    near = Math.max(near, a); far = Math.min(far, b);
+    if (near > far) return Infinity;
+  }
+  return near;
+}
+export function phaseColor(phase) {
+  const h = ((190 + phase * 180 / Math.PI) % 360 + 360) % 360 / 60;
+  const c = .7 * .78, x = c * (1 - Math.abs(h % 2 - 1)), m = .65 - c / 2;
+  const rgb = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+  return rgb.map(v => v + m);
+}
+
+export class HistogramRenderer {
+  constructor(canvas, { onChange = () => {}, onPick = () => {}, onHover = () => {}, onError = () => {} } = {}) {
+    this.canvas = canvas; this.context = canvas.getContext('2d', { alpha: false });
+    this.surface = document.createElement('canvas');
+    this.gl = this.surface.getContext('webgl', { antialias: true, alpha: false });
+    if (!this.context || !this.gl) throw new Error('This histogram needs a browser with WebGL enabled.');
+    this.onChange = onChange; this.onPick = onPick; this.onHover = onHover;
+    this.view = { ...DEFAULT_VIEW }; this.hover = -1; this.pointers = new Map();
+    this.width = 1; this.height = 1; this.data = null; this.lost = false;
+    this.setupGL(); this.installControls();
+    this.surface.addEventListener('webglcontextlost', event => {
+      event.preventDefault(); this.lost = true; onError('The graphics context was interrupted. Waiting for it to recover…');
+    });
+    this.surface.addEventListener('webglcontextrestored', () => { this.setupGL(); this.lost = false; onError(''); this.onChange(); });
+  }
+  setupGL() {
+    const gl = this.gl;
+    const shader = (type, source) => {
+      const result = gl.createShader(type); gl.shaderSource(result, source); gl.compileShader(result);
+      if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(result));
+      return result;
+    };
+    const vs = shader(gl.VERTEX_SHADER, 'attribute vec3 position; attribute vec3 color; uniform mat4 matrix; varying vec3 tint; void main(){ gl_Position=matrix*vec4(position,1.0); tint=color; }');
+    const fs = shader(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec3 tint; void main(){ gl_FragColor=vec4(tint,1.0); }');
+    this.program = gl.createProgram(); gl.attachShader(this.program, vs); gl.attachShader(this.program, fs); gl.linkProgram(this.program);
+    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.program));
+    gl.deleteShader(vs); gl.deleteShader(fs);
+    this.buffer = gl.createBuffer(); this.matrixUniform = gl.getUniformLocation(this.program, 'matrix');
+    this.positionAttribute = gl.getAttribLocation(this.program, 'position'); this.colorAttribute = gl.getAttribLocation(this.program, 'color');
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  }
+  setView(next) {
+    for (const key of ['yaw', 'elevation', 'zoom']) if (Number.isFinite(next[key])) this.view[key] = next[key];
+    this.view.yaw = ((this.view.yaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    this.view.elevation = clamp(this.view.elevation, .18, Math.PI / 2 - .015);
+    this.view.zoom = clamp(this.view.zoom, .6, 1.8);
+    this.updateCamera(); this.onChange(); return { ...this.view };
+  }
+  resetView() { return this.setView(DEFAULT_VIEW); }
+  orbit(dx, dy = 0) { return this.setView({ yaw: this.view.yaw + dx, elevation: this.view.elevation + dy }); }
+  zoom(factor) { return this.setView({ zoom: this.view.zoom * factor }); }
+  updateCamera() { this.camera = cameraFor(this.view, this.width, this.height, this.data?.side || 4); }
+  resize() {
+    const bounds = this.canvas.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const width = Math.max(1, Math.round(bounds.width)), height = Math.max(1, Math.round(bounds.height));
+    const pw = Math.round(width * dpr), ph = Math.round(height * dpr);
+    if (this.canvas.width !== pw || this.canvas.height !== ph) {
+      this.canvas.width = this.surface.width = pw; this.canvas.height = this.surface.height = ph;
+    }
+    this.width = width; this.height = height; this.dpr = dpr; this.updateCamera();
+  }
+  draw(data, options = {}) {
+    this.data = data; this.resize(); if (this.lost) return;
+    const { side, probabilities: ps, amplitudes, initial, target, labels } = data;
+    const triangles = [], lines = [], half = side / 2;
+    const vertex = (out, p, color) => out.push(...p, ...color);
+    const quad = (points, color) => { for (const i of [0, 1, 2, 0, 2, 3]) vertex(triangles, points[i], color); };
+    const line = (a, b, color) => { vertex(lines, a, color); vertex(lines, b, color); };
+    const outline = (x, z, r, y, color) => {
+      const points = [[x-r,y,z-r],[x+r,y,z-r],[x+r,y,z+r],[x-r,y,z+r]];
+      for (let i = 0; i < 4; i++) line(points[i], points[(i+1)%4], color);
+    };
+    quad([[-half-.13,-.065,-half-.13],[half+.13,-.065,-half-.13],[half+.13,-.065,half+.13],[-half-.13,-.065,half+.13]], [.12,.18,.26]);
+    for (let q = 0; q < ps.length; q++) {
+      const [x,,z] = columnCenter(q, side), r = .474;
+      let tile = (Math.floor(q / side) + q % side) % 2 ? [.085,.14,.21] : [.10,.16,.235];
+      if (q === target) tile = [.23,.21,.16];
+      if (q === this.hover) tile = tile.map(v => v * 1.5);
+      quad([[x-r,0,z-r],[x+r,0,z-r],[x+r,0,z+r],[x-r,0,z+r]], tile);
+      outline(x, z, r, .005, [.21,.30,.40]);
+      if (q === target) { outline(x,z,.435,.013,[.96,.76,.40]); outline(x,z,.415,.014,[.96,.76,.40]); }
+      if (q === initial) outline(x,z,.39,.016,[.64,.87,.96]);
+      const h = columnHeight(ps[q], side);
+      if (h < 1e-8) continue;
+      const w = .31, y = .018;
+      const c = options.phaseColors === false ? [.36,.77,.90] : phaseColor(Math.atan2(amplitudes[2*q+1], amplitudes[2*q]));
+      const points = [[x-w,y,z-w],[x+w,y,z-w],[x+w,y,z+w],[x-w,y,z+w],
+        [x-w,y+h,z-w],[x+w,y+h,z-w],[x+w,y+h,z+w],[x-w,y+h,z+w]];
+      const faces = [[4,5,6,7,.98],[0,1,5,4,.59],[1,2,6,5,.72],[2,3,7,6,.83],[3,0,4,7,.65]];
+      for (const face of faces) quad(face.slice(0,4).map(i => points[i]), c.map(v => v * face[4]));
+      for (const [a,b] of [[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]) line(points[a], points[b], c.map(v => Math.min(1, v * 1.12)));
+    }
+    // Keep the probability ruler on the left silhouette of the board at any yaw.
+    const ax = (Math.cos(this.view.yaw) >= 0 ? -1 : 1) * (half + .22);
+    const az = (Math.sin(this.view.yaw) >= 0 ? 1 : -1) * (half + .22);
+    line([ax,0,az],[ax,columnHeight(1,side),az],[.32,.43,.56]);
+    this.renderGeometry(triangles, lines);
+    const ctx = this.context; ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
+    ctx.drawImage(this.surface,0,0,this.width,this.height);
+    ctx.font = '10px "Segoe UI", sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const p of this.view.elevation > 1.35 ? [] : [0,.25,.5,.75,1]) {
+      const pos = project([ax,columnHeight(p,side),az],this.camera);
+      ctx.strokeStyle = '#5a728b'; ctx.beginPath(); ctx.moveTo(pos.x-3,pos.y); ctx.lineTo(pos.x+3,pos.y); ctx.stroke();
+      ctx.fillStyle = '#91a6be'; ctx.fillText(`${100*p}%`,pos.x-8,pos.y);
+    }
+    ctx.textAlign = 'center'; ctx.font = '10px Consolas, monospace';
+    const frontZ = (Math.cos(this.view.yaw) >= 0 ? 1 : -1) * (half + .23);
+    const frontX = (Math.sin(this.view.yaw) >= 0 ? 1 : -1) * (half + .23);
+    for (let i = 0; i < side; i++) {
+      const xp = project([i-(side-1)/2,0,frontZ],this.camera), yp = project([frontX,0,(side-1)/2-i],this.camera);
+      ctx.fillStyle = '#91abc6'; ctx.fillText(`x=${i}`,xp.x,xp.y+12); ctx.fillText(`y=${i}`,yp.x,yp.y+12);
+    }
+    const candidates = [];
+    if (options.valueLabels !== false) for (let q = 0; q < ps.length; q++) {
+      if (ps[q] < 1e-6 && q !== target && q !== initial) continue;
+      const [x,,z] = columnCenter(q,side), pos = project([x,columnHeight(ps[q],side)+.05,z],this.camera);
+      if (!pos.visible) continue;
+      candidates.push({ q, pos, priority: q === this.hover ? 3 : q === target ? 2 : q === initial ? 1 : 0 });
+    }
+    candidates.sort((a,b) => b.priority-a.priority || a.pos.depth-b.pos.depth);
+    const occupied = [];
+    for (const {q,pos} of candidates) {
+      const text = `${(ps[q]*100).toFixed(ps[q] >= .99995 ? 0 : 1)}%`;
+      ctx.font = '11px "Segoe UI", sans-serif';
+      const label = `|${labels[q]}⟩`, width = Math.max(ctx.measureText(text).width,ctx.measureText(label).width)+12;
+      const rect = { x: pos.x-width/2, y: pos.y-35, w: width, h: 32 };
+      if (rect.x < 2 || rect.y < 2 || rect.x+rect.w > this.width-2 || rect.y+rect.h > this.height-2) continue;
+      if (occupied.some(b => rect.x < b.x+b.w+3 && rect.x+rect.w+3 > b.x && rect.y < b.y+b.h+3 && rect.y+rect.h+3 > b.y)) continue;
+      occupied.push(rect); ctx.fillStyle = '#0b1627dc'; ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
+      ctx.fillStyle = q === target ? '#f5ca79' : '#e1eefb'; ctx.fillText(text,pos.x,rect.y+10);
+      ctx.font = '9px Consolas, monospace'; ctx.fillStyle = q === target ? '#d8b87c' : '#9cb8d2'; ctx.fillText(label,pos.x,rect.y+24);
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.font = '10px "Segoe UI", sans-serif'; ctx.fillStyle = '#91a8c0';
+    ctx.fillText('HEIGHT  |a|²     •     0–100%',16,this.height-15);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#f5ca79';
+    ctx.fillText(`MARKED |${labels[target]}⟩  ${(100*ps[target]).toFixed(2)}%`,this.width-16,this.height-15);
+  }
+  renderGeometry(triangles, lines) {
+    const gl = this.gl; gl.viewport(0,0,this.surface.width,this.surface.height);
+    gl.clearColor(.047,.086,.149,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(this.program); gl.uniformMatrix4fv(this.matrixUniform,false,this.camera.matrix);
+    gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
+    gl.enableVertexAttribArray(this.positionAttribute); gl.vertexAttribPointer(this.positionAttribute,3,gl.FLOAT,false,24,0);
+    gl.enableVertexAttribArray(this.colorAttribute); gl.vertexAttribPointer(this.colorAttribute,3,gl.FLOAT,false,24,12);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([...triangles,...lines]),gl.DYNAMIC_DRAW);
+    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1,1);
+    gl.drawArrays(gl.TRIANGLES,0,triangles.length/6); gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.drawArrays(gl.LINES,triangles.length/6,lines.length/6);
+  }
+  hitTest(x,y) {
+    if (!this.data || !this.camera) return -1;
+    const {side,probabilities} = this.data, direction = screenRay(x,y,this.camera);
+    let hit = -1, nearest = Infinity;
+    for (let q = 0; q < side*side; q++) {
+      const [cx,,cz] = columnCenter(q,side), h = columnHeight(probabilities[q],side);
+      const tile = rayBox(this.camera.eye,direction,[cx-.474,-.05,cz-.474],[cx+.474,0,cz+.474]);
+      const bar = h > 1e-8 ? rayBox(this.camera.eye,direction,[cx-.31,.018,cz-.31],[cx+.31,h+.018,cz+.31]) : Infinity;
+      const distance = Math.min(tile,bar);
+      if (distance < nearest) { nearest = distance; hit = q; }
+    }
+    return hit;
+  }
+  projectState(q, top = true) {
+    if (!this.data || q < 0 || q >= this.data.side ** 2) return null;
+    const p = columnCenter(q,this.data.side); if (top) p[1] = columnHeight(this.data.probabilities[q],this.data.side)+.018;
+    return project(p,this.camera);
+  }
+  installControls() {
+    const canvas = this.canvas;
+    const position = event => { const b = canvas.getBoundingClientRect(); return {x:event.clientX-b.left,y:event.clientY-b.top}; };
+    const pinchDistance = () => { const [a,b] = [...this.pointers.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
+    canvas.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      const p = position(event); this.pointers.set(event.pointerId,p);
+      if (event.isTrusted) canvas.setPointerCapture(event.pointerId);
+      if (this.pointers.size === 1) { this.down = p; this.dragged = false; }
+      else { this.dragged = true; this.pinch = pinchDistance(); }
+    });
+    canvas.addEventListener('pointermove', event => {
+      const p = position(event), old = this.pointers.get(event.pointerId);
+      if (old) {
+        this.pointers.set(event.pointerId,p);
+        if (this.pointers.size > 1) {
+          const distance = pinchDistance(); if (this.pinch > 0) this.zoom(distance/this.pinch); this.pinch = distance;
+        } else {
+          if (Math.hypot(p.x-this.down.x,p.y-this.down.y) > 5) this.dragged = true;
+          if (this.dragged) this.orbit(-(p.x-old.x)*.008,(p.y-old.y)*.006);
+        }
+      } else {
+        const q = this.hitTest(p.x,p.y);
+        if (q !== this.hover) { this.hover = q; this.onHover(q); this.onChange(); }
+      }
+    });
+    const finish = (event,cancel = false) => {
+      if (!this.pointers.has(event.pointerId)) return;
+      const p = position(event), click = !cancel && !this.dragged && this.pointers.size === 1 && Math.hypot(p.x-this.down.x,p.y-this.down.y) <= 5;
+      this.pointers.delete(event.pointerId);
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      if (click) { const q = this.hitTest(p.x,p.y); if (q >= 0) this.onPick(q); }
+      if (this.pointers.size === 1) { this.down = [...this.pointers.values()][0]; this.dragged = true; }
+    };
+    canvas.addEventListener('pointerup',event => finish(event));
+    canvas.addEventListener('pointercancel',event => finish(event,true));
+    canvas.addEventListener('lostpointercapture',event => finish(event,true));
+    canvas.addEventListener('pointerleave',() => { if (!this.pointers.size) { this.hover = -1; this.onHover(-1); this.onChange(); } });
+    canvas.addEventListener('wheel',event => { event.preventDefault(); const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.height : 1; this.zoom(Math.exp(-event.deltaY*unit*.001)); },{passive:false});
+    canvas.addEventListener('keydown',event => {
+      const actions = {ArrowLeft:()=>this.orbit(-.12),ArrowRight:()=>this.orbit(.12),ArrowUp:()=>this.orbit(0,.10),ArrowDown:()=>this.orbit(0,-.10),
+        '+':()=>this.zoom(1.1),'=':()=>this.zoom(1.1),'-':()=>this.zoom(1/1.1),Home:()=>this.resetView()};
+      if (actions[event.key]) { event.preventDefault(); actions[event.key](); }
+    });
+  }
+}

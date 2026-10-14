@@ -122,7 +122,7 @@
   function recordingFileName(startedAt = state.startedAt) {
     const stamp = new Date(startedAt || Date.now()).toISOString().replace(/[:.]/g, "-");
     const side = window.BohmianGrover2D?.state().side || 4;
-      return `grover-multiregion-${side}x${side}-${stamp}.webm`;
+    return `ordinary-grover-${side}x${side}-${stamp}.webm`;
   }
 
   function syncRecordingButton() {

@@ -1,430 +1,202 @@
-import { SearchSimulation, expectedProbability, probabilities,
-  sineCoefficients, boxProbability } from './multiregion-core.js?v=20261014-particles';
-import { createGroverGeometry } from './grover-geometry.js?v=20261014-particles';
-import { FlowRenderer } from './flow-renderer.js?v=20261014-particles';
+import { SearchSimulation, expectedProbability } from './multiregion-core.js?v=20261014-ordinary1';
+import { HistogramRenderer, columnHeight } from './histogram-renderer.js?v=20261014-ordinary1';
 
-const GRID = 512;
-const PARTICLE_COUNT_MIN = 1000, PARTICLE_COUNT_MAX = 100000;
-const PARTICLE_COUNT_LOG_RANGE = Math.log(PARTICLE_COUNT_MAX / PARTICLE_COUNT_MIN);
-const simulation = new SearchSimulation(15);
-const params = { speed: 1, visGain: .65, visGamma: .55, showPhase: true, showGrid: true, showMarkers: true,
-  showCurrent: true, showParticles: true, showTrails: true, particleCount: 4000,
-  particleSize: 3.5, arrowGrid: 20, currentGain: 2.5, trailHalfLife: 1.5 };
-const byId = id => document.getElementById(id);
-const dom = Object.fromEntries(['gridSize', 'gridSizeValue', 'gridSummary', 'appTitle', 'stateCountLabel',
-  'circuitXLabel', 'circuitYLabel', 'circuitTitle', 'circuitDescription', 'inverseCaption', 'c', 'waveArea', 'waveLabels', 'stage', 'waveHeader', 'waveFooter',
-  'selectionGuide', 'selectionTitle', 'selectionHint', 'selectionBack', 'selectionNext', 'markersToggle', 'waveInitial', 'waveLegend', 'phaseLegendPanel', 'next', 'full',
-  'reset', 'pause', 'progressBar', 'stageStatus', 'speed', 'speedValue', 'brightness', 'brightnessValue',
-  'phaseToggle', 'gridToggle', 'ui', 'uibody', 'minui', 'circuitPanel', 'circuitToggle', 'circuitStatus',
-  'circuitTarget', 'circuitReadout', 'iterationTrack', 'modeProbability', 'boxProbability', 'normValue',
-  'waveTarget', 'waveProbability', 'gateDescription', 'error', 'loading', 'groverGeometry',
-  'currentToggle', 'particlesToggle', 'trailsToggle', 'particleCount', 'particleCountValue',
-  'particleSize', 'particleSizeValue', 'arrowGrid', 'arrowGridValue', 'currentGain', 'currentGainValue',
-  'trailHalfLife', 'trailHalfLifeValue',
-  'particleProbability', 'flowStatus'].map(id => [id, byId(id)]));
-const geometry = createGroverGeometry(dom.groverGeometry);
-const canvas = dom.c;
-let gl, waveTexture, waveFbo, vao, reconstruction, renderer, flow, ready = false;
-let waveDirty = true, renderDirty = true, frameRecordingActive = false, lastTime = null, glError = 0;
-let lastUiKey = '', previousBusy = null, cachedBoxProbability = 0;
-let selectionStep = 'initial', lastSelectionKey = '';
-const waveCells = [];
-const circuitInputs = Array.from(document.querySelectorAll('.circuitInput'));
-const circuitGates = Array.from(document.querySelectorAll('[data-circuit-kind]'));
+// Reuse the non-free branch's exact logical gates and timing, unchanged.
+const simulation = new SearchSimulation(15, 0, 4);
+const dom = Object.fromEntries(['gridSize', 'gridSizeValue', 'gridSummary', 'stateCountLabel',
+  'initialState', 'targetState', 'selectInitial', 'selectTarget', 'selectionHint', 'next', 'full',
+  'pause', 'reset', 'gateProgress', 'progressBar', 'stageStatus', 'speed', 'speedValue',
+  'phaseColors', 'valueLabels', 'phaseLegend', 'c', 'plotArea', 'plotBadge', 'error',
+  'markedLabel', 'markedProbability', 'orbitLeft', 'orbitRight', 'zoomOut', 'zoomIn', 'topView',
+  'resetView', 'gateDescription', 'inspectState', 'circuitStatus', 'circuitInput', 'circuitDiagram',
+  'repeatCaption', 'prepareSymbol', 'inverseSymbol', 'forwardSymbol', 'iterationTrack', 'mixerNote',
+  'resultState', 'successFill', 'successValue', 'expectedValue', 'normValue', 'iterationsNote', 'theoryMixer',
+].map(id => [id, document.getElementById(id)]));
+const gateNodes = [...document.querySelectorAll('[data-circuit-kind]')];
+const options = { phaseColors: true, valueLabels: true, speed: 1 };
+let renderer, ready = false, dirty = true, recording = false, lastTime = null, selection = null, hovered = -1;
+const percent = p => `${(100 * Math.max(0, Math.min(1, p))).toFixed(2)}%`;
+const ket = q => `|${simulation.model.labels[q]}⟩`;
+const symbol = () => simulation.model.side % 2 ? 'B' : 'H';
+const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
+const markDirty = () => { dirty = true; };
+function error(message) { text(dom.error, message); dom.error.hidden = !message; }
 
-function formatProbability(p) { return `${(100 * Math.max(0, Math.min(1, p))).toFixed(1)}%`; }
-function markChanged() { waveDirty = true; renderDirty = true; lastUiKey = ''; }
-
-function makeTargetGrid() {
-  const { side, stateCount, labels: LABELS, iterations, inverseFactor } = simulation.model;
-  waveCells.length = 0; dom.waveLabels.replaceChildren();
-  document.documentElement.style.setProperty('--grid-side', side);
-  dom.gridSize.value = side; dom.gridSizeValue.textContent = side + '×' + side;
-  dom.gridSize.setAttribute('aria-valuetext', side + ' by ' + side + ', ' + stateCount + ' states');
-  dom.gridSummary.textContent = stateCount + ' spatial states. Changing size resets the search.';
-  dom.appTitle.textContent = 'Grover Search · ' + side + '×' + side;
-  document.title = dom.appTitle.textContent + ' · ' + stateCount + ' states';
-  dom.stateCountLabel.textContent = 'NON-FREE MIXER · ' + stateCount + ' LOGICAL MODES';
-  canvas.setAttribute('aria-label', 'Continuous two-dimensional probability wave with ' + stateCount + ' outcome regions');
-  dom.circuitXLabel.textContent = 'x (' + side + ')'; dom.circuitYLabel.textContent = 'y (' + side + ')';
-  dom.circuitTitle.textContent = 'Grover circuit: two ' + side + '-level position registers';
-  dom.circuitPanel.setAttribute('aria-label', dom.circuitTitle.textContent);
-  dom.circuitDescription.textContent = 'Preparation runs once. Oracle, inverse mixer, reference phase and forward mixer repeat ' + iterations + ' times.';
-  dom.inverseCaption.textContent = 'INVERSE';
-  dom.full.title = 'Prepare and run ' + iterations + ' Grover iterations';
-  dom.iterationTrack.innerHTML = Array.from({ length: iterations }, (_, i) => '<span data-iteration="' + (i+1) + '">Iteration ' + (i+1) + '<b>—</b></span>').join('');
-  for (let y = side - 1; y >= 0; y--) for (let x = 0; x < side; x++) {
-    const q = side * x + y;
-    const cell = document.createElement('div'); cell.className = 'waveCell'; cell.dataset.region = q;
-    cell.innerHTML = `<span>|${LABELS[q]}⟩</span><span class="initialTag"></span><span class="goalTag"></span><b>0.0%</b>`;
-    dom.waveLabels.append(cell); waveCells[q] = cell;
+function buildGridUI() {
+  const { side, stateCount, labels, iterations } = simulation.model;
+  dom.gridSize.value = side; text(dom.gridSizeValue, `${side} × ${side}`);
+  dom.gridSize.setAttribute('aria-valuetext', `${side} by ${side}, ${stateCount} states`);
+  text(dom.gridSummary, `${stateCount} computational basis states. Changing size resets the search.`);
+  text(dom.stateCountLabel, `${stateCount} states · ${iterations} ${iterations === 1 ? 'iteration' : 'iterations'}`);
+  document.title = `Ordinary Grover · ${side}×${side}`;
+  for (const select of [dom.initialState, dom.targetState]) {
+    select.replaceChildren(...labels.map((label, q) => {
+      const option = document.createElement('option'); option.value = q;
+      option.textContent = `|${label}⟩  ·  (${Math.floor(q / side)}, ${q % side})`; return option;
+    }));
   }
+  dom.iterationTrack.replaceChildren(...Array.from({length: iterations}, (_, i) => {
+    const node = document.createElement('div'); node.dataset.iteration = i+1;
+    const label = document.createElement('span'); label.textContent = `Round ${i+1}`;
+    const value = document.createElement('b'); value.textContent = '—'; node.append(label, value); return node;
+  }));
+  text(dom.repeatCaption, `REPEAT ${iterations} ${iterations === 1 ? 'TIME' : 'TIMES'}`);
+  text(dom.prepareSymbol, symbol()); text(dom.forwardSymbol, symbol());
+  dom.inverseSymbol.replaceChildren(document.createTextNode(symbol()), Object.assign(document.createElement('sup'), { textContent: '†' }));
+  const odd = side % 2;
+  text(dom.mixerNote, odd ? `B is the balanced ${stateCount}-state mixer. B† is its inverse; this grid is not a qubit register.`
+    : `H is the ${2*Math.log2(side)}-qubit Hadamard. H† is its inverse.`);
+  text(dom.theoryMixer, odd ? `For ${side}×${side}, the original balanced mixer is B[(x,y),(u,v)] = exp[2πi(xv−yu)/${side}]/${side}. It is unitary, Hermitian, and prepares equal probabilities from any basis state. In the reflection formula below, replace H with B.`
+    : 'On 2×2 and 4×4 grids, H is the tensor-product qubit Hadamard.');
+  text(dom.expectedValue, percent(expectedProbability(iterations,side)));
+  text(dom.iterationsNote, `The first Grover peak occurs after ${iterations} amplification ${iterations === 1 ? 'round' : 'rounds'} for ${stateCount} states.`);
+  dom.circuitDiagram.setAttribute('aria-label', `Circuit for ${stateCount} states: ${symbol()} preparation, then ${iterations} repeats of oracle, inverse ${symbol()}, initial-state reference phase, and forward ${symbol()}.`);
 }
-
-function chooseInitial(q) {
-  if (!simulation.setInitial(q)) return false;
-  flow?.reset(params.particleCount,simulation.initial,simulation.model.side);
-  markChanged(); syncUi(); return true;
+function setGridSize(side) {
+  if (!simulation.setGridSize(Number(side))) return false;
+  selection = null; hovered = -1; if (renderer) renderer.hover = -1;
+  buildGridUI(); refresh(); return true;
 }
-function setSelectionStep(step) {
+function choose(which, q) {
+  const changed = which === 'initial' ? simulation.setInitial(Number(q)) : simulation.setTarget(Number(q));
+  if (!changed) return false;
+  selection = null; refresh(); return true;
+}
+function reset() { simulation.reset(); selection = null; refresh(); }
+function startNext() {
+  if (!simulation.startNext()) return false;
+  selection = null; refresh(); return true;
+}
+function runFull() {
+  if (!simulation.runFull()) return false;
+  selection = null; refresh(); return true;
+}
+function togglePause() {
+  if (!simulation.active) return false;
+  simulation.paused = !simulation.paused; refresh(); return simulation.paused;
+}
+function setSelection(which) {
   if (simulation.active) return false;
-  selectionStep = step; lastUiKey = ''; syncUi(); layout(); return true;
+  selection = selection === which ? null : which; refresh(); return true;
 }
-function setGridSize(value) {
-  if (!simulation.setGridSize(Number(value))) return false;
-  selectionStep = 'initial';
-  flow?.reset(params.particleCount, simulation.initial, simulation.model.side);
-  makeTargetGrid(); markChanged(); syncUi(); layout(); return true;
+function setSpeed(value) {
+  const speed = Number(value); if (!Number.isFinite(speed)) return false;
+  options.speed = Math.max(.25, Math.min(3,speed)); dom.speed.value = options.speed;
+  text(dom.speedValue, `${options.speed.toFixed(2).replace(/0$/, '')}×`); return true;
 }
-function chooseTarget(q) {
-  if (!simulation.setTarget(q)) return false;
-  flow?.reset(params.particleCount,simulation.initial,simulation.model.side);
-  markChanged(); syncUi(); return true;
+function description(kind) {
+  const mixer = symbol();
+  return {
+    input: `All probability starts in ${ket(simulation.initial)}. Apply ${mixer} to prepare equal probabilities across the grid.`,
+    prepare: `${mixer} takes the initial state into a balanced superposition: every column ends at ${(100/simulation.model.stateCount).toFixed(2)}%.`,
+    oracle: `The oracle rotates the phase of the marked state ${ket(simulation.target)} by π. Its color changes; every column keeps the same height.`,
+    inverse: `${mixer}† undoes the preparation transform. The oracle's phase change now produces different column heights.`,
+    reference: `Sᵢ flips the phase of the initial state ${ket(simulation.initial)}. Again, the heights stay fixed.`,
+    forward: `${mixer} completes the reflection about the prepared state. The marked column grows at each completed round.`,
+  }[kind];
 }
-function reset() { simulation.reset(); selectionStep = 'initial'; flow?.reset(params.particleCount,simulation.initial,simulation.model.side); markChanged(); syncUi(); layout(); }
-function startNext() { if (simulation.startNext()) { selectionStep = 'ready'; markChanged(); syncUi(); layout(); return true; } return false; }
-function runFull() { if (simulation.runFull()) { selectionStep = 'ready'; flow?.reset(params.particleCount,simulation.initial,simulation.model.side); markChanged(); syncUi(); layout(); return true; } return false; }
-function togglePause() { simulation.paused = !simulation.paused; lastUiKey = ''; syncUi(); }
-function particleCountFromSlider() {
-  // Equal thumb distances multiply the count; round to 100 for readable steps.
-  return 100 * Math.round(PARTICLE_COUNT_MIN * Math.exp(
-    PARTICLE_COUNT_LOG_RANGE * Number(dom.particleCount.value) / 1000) / 100);
+function nextLabel(gate) {
+  if (!gate) return 'Search complete';
+  return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()}† · inverse`,reference:'Apply Sᵢ · reference',forward:`Apply ${symbol()} · forward`}[gate.kind];
 }
-function showParticleCount(count) {
-  const label = count.toLocaleString();
-  dom.particleCountValue.textContent = label;
-  dom.particleCount.setAttribute('aria-valuetext', label + ' particles');
-}
-function syncParticleCountSlider(position = 1000 * Math.log(params.particleCount / PARTICLE_COUNT_MIN) / PARTICLE_COUNT_LOG_RANGE) {
-  dom.particleCount.value = position;
-  showParticleCount(params.particleCount);
-}
-function setParticleCount(value, sliderPosition) {
-  if (simulation.active) return false;
-  params.particleCount = Math.max(256, Math.min(PARTICLE_COUNT_MAX, Math.round(Number(value) || 4000)));
-  syncParticleCountSlider(sliderPosition);
-  reset(); return true;
-}
-
-function syncUi() {
-  const { side, stateCount: STATE_COUNT, labels: LABELS, gates: GATES, iterations: ITERATIONS, inverseFactor } = simulation.model;
-  const gate = simulation.active || simulation.last;
-  const kind = gate?.kind || 'input', progress = simulation.active?.progress ?? (simulation.last ? 1 : 0);
-  const iteration = gate?.iteration || 0, busy = !!simulation.active, complete = simulation.completed === GATES.length;
-  const key = `${simulation.revision}/${simulation.target}/${simulation.completed}/${kind}/${progress}/${busy}/${simulation.paused}/${selectionStep}/${params.showMarkers}`;
-  if (key === lastUiKey) return;
-  lastUiKey = key;
-  const p = probabilities(simulation.amplitudes), target = simulation.target, initial = simulation.initial;
-  cachedBoxProbability = boxProbability(simulation.amplitudes, target);
-  for (let q = 0; q < STATE_COUNT; q++) {
-    const isTarget = params.showMarkers && q === target, isInitial = params.showMarkers && q === initial;
-    waveCells[q].classList.toggle('marked', isTarget);
-    waveCells[q].classList.toggle('initial', isInitial);
-    waveCells[q].querySelector('b').textContent = formatProbability(p[q]);
-    waveCells[q].querySelector('.initialTag').textContent = isInitial ? 'START' : '';
-    waveCells[q].querySelector('.goalTag').textContent = isTarget ? 'GOAL' : '';
+function syncUI(state) {
+  const {stateCount,iterations,gates} = simulation.model, gate = simulation.active, next = gates[state.completed];
+  dom.initialState.value = state.initial; dom.targetState.value = state.target;
+  for (const node of [dom.initialState,dom.targetState,dom.selectInitial,dom.selectTarget]) node.disabled = state.busy;
+  dom.selectInitial.setAttribute('aria-pressed', selection === 'initial'); dom.selectTarget.setAttribute('aria-pressed', selection === 'target');
+  dom.c.classList.toggle('picking',!!selection);
+  text(dom.selectionHint, state.busy ? 'State selection is locked until this operation finishes.' : selection ? `Click a column or square to choose the ${selection === 'initial' ? 'initial' : 'marked'} state. Drag still orbits the camera.` : 'Choose states above, or pick a square on the histogram.');
+  dom.next.disabled = state.busy || !next || !ready; dom.full.disabled = state.busy || !ready;
+  dom.pause.disabled = !state.busy; text(dom.pause,state.paused ? 'Resume' : 'Pause');
+  text(dom.next,nextLabel(next));
+  const progress = state.busy ? state.progress : state.completed ? 1 : 0;
+  dom.progressBar.style.width = `${progress*100}%`; dom.gateProgress.setAttribute('aria-valuenow',Math.round(progress*100));
+  text(dom.stageStatus, gate ? `${state.paused ? 'Paused · ' : ''}${gate.name}${gate.iteration ? ` · round ${gate.iteration}/${iterations}` : ''}`
+    : !next ? 'Search complete · inspect the result' : state.completed ? 'Checkpoint · apply the next operation' : 'Ready to prepare');
+  text(dom.plotBadge,state.busy ? `${state.paused ? 'PAUSED · ' : ''}${state.kind.toUpperCase()}${state.iteration ? ` · ROUND ${state.iteration}` : ''}`
+    : state.completed === gates.length ? 'SEARCH COMPLETE' : state.completed ? `${state.kind.toUpperCase()} · CHECKPOINT` : 'INPUT STATE');
+  const probability = state.probabilities[state.target], formatted = percent(probability);
+  text(dom.markedLabel,`Marked ${ket(state.target)}`);
+  if (dom.markedProbability.dataset.value !== formatted) {
+    dom.markedProbability.dataset.value = formatted;
+    dom.markedProbability.replaceChildren(document.createTextNode(formatted.slice(0,-1)),Object.assign(document.createElement('span'),{textContent:'%'}));
   }
-  const targetText = `|${LABELS[target]}⟩`;
-  const initialText = `|${LABELS[initial]}⟩`;
-  dom.waveInitial.textContent = `INITIAL ${initialText}`;
-  circuitInputs.forEach((element, axis) => { element.textContent = '|'+(axis === 0 ? Math.floor(initial/side) : initial%side)+'⟩'; });
-  dom.waveTarget.textContent = `MARKED ${targetText}`;
-  const selectionKey = selectionStep + '/' + busy;
-  if (selectionKey !== lastSelectionKey) {
-    lastSelectionKey = selectionKey;
-    dom.selectionGuide.dataset.step = selectionStep;
-    dom.selectionTitle.textContent = busy ? 'Selections held during the search' : {
-      initial: '1 · Initial state (green)',
-      goal: '2 · Goal state (red)',
-      ready: 'Initial and goal states are ready',
-    }[selectionStep];
-    dom.selectionHint.textContent = busy ? 'Reset to choose different states. You can hide the markers below.' : {
-      initial: 'Click an initial square, then choose the goal. Or run with the current choices.',
-      goal: 'Click a goal square. Then select Done, or run now with the current choices.',
-      ready: 'Run the search, or select “Choose states” to pick a new initial state and goal.',
-    }[selectionStep];
-    dom.selectionBack.hidden = selectionStep !== 'goal';
-    dom.selectionNext.textContent = { initial: 'Next: choose goal', goal: 'Done', ready: 'Choose states' }[selectionStep];
-    dom.selectionBack.disabled = busy; dom.selectionNext.disabled = busy;
-    dom.waveArea.classList.toggle('selecting', selectionStep !== 'ready');
+  text(dom.resultState,ket(state.target)); text(dom.successValue,formatted); text(dom.normValue,percent(state.norm));
+  dom.successFill.style.width = `${Math.min(100,100*probability)}%`;
+  text(dom.gateDescription,description(state.kind)); text(dom.circuitInput,ket(state.initial));
+  text(dom.circuitStatus,`${state.completed} / ${gates.length} operations`);
+  for (const node of gateNodes) {
+    const kind = node.dataset.circuitKind;
+    node.classList.toggle('active',state.busy && state.kind === kind);
+    node.classList.toggle('done',!state.busy && state.kind === kind && state.completed > 0);
   }
-  dom.waveProbability.textContent = formatProbability(p[target]);
-  dom.modeProbability.textContent = formatProbability(p[target]);
-  dom.boxProbability.textContent = formatProbability(cachedBoxProbability);
-  dom.normValue.textContent = p.reduce((sum, value) => sum + value, 0).toFixed(6);
-  const nextGate = GATES[simulation.completed];
-  dom.next.title = nextGate?.kind === 'reference' ? 'Reference phase '+initialText : nextGate?.name || 'Search complete';
-  dom.next.disabled = busy || complete;
-  dom.full.disabled = busy;
-  dom.pause.textContent = simulation.paused ? 'Resume' : 'Pause';
-  dom.particleCount.disabled = busy;
-  dom.progressBar.style.width = `${100 * progress}%`;
-  const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
-  const status = complete ? 'Complete · ' + ITERATIONS + ' Grover iterations' : busy
-    ? `${simulation.paused ? 'Paused' : 'Running'} · ${round}${gate.name} · ${Math.round(100 * progress)}%`
-    : gate ? `${round}${gate.name} complete` : 'Ready · input '+initialText;
-  dom.stageStatus.textContent = status;
-  dom.circuitStatus.textContent = status;
-  dom.circuitTarget.textContent = `w = ${targetText}`;
-  const order = ['prepare', 'oracle', 'inverse', 'reference', 'forward'];
-  for (const element of circuitGates) {
-    const ownKind = element.dataset.circuitKind;
-    const active = busy && ownKind === kind;
-    const done = ownKind === 'prepare' ? simulation.completed > 0 : iteration > 0 &&
-      (order.indexOf(ownKind) < order.indexOf(kind) || (!busy && ownKind === kind));
-    element.classList.toggle('active', active);
-    element.classList.toggle('complete', done && !active);
-    element.classList.toggle('future', !active && !done);
+  for (const node of dom.iterationTrack.children) {
+    const checkpoint = state.checkpoints.find(item => item.iteration === Number(node.dataset.iteration) && item.kind === 'forward');
+    node.classList.toggle('complete',!!checkpoint); text(node.lastElementChild,checkpoint ? percent(checkpoint.targetProbability) : '—');
   }
-  dom.circuitPanel.classList.toggle('paused', simulation.paused);
-  dom.circuitReadout.classList.toggle('complete', complete);
-  for (const marker of dom.iterationTrack.children) {
-    const n = Number(marker.dataset.iteration);
-    const result = simulation.checkpoints.find(checkpoint => checkpoint.kind === 'forward' && checkpoint.iteration === n);
-    marker.classList.toggle('complete', !!result);
-    marker.classList.toggle('active', iteration === n && !result);
-    marker.querySelector('b').textContent = result ? formatProbability(result.targetProbability) : '—';
-  }
-  const descriptions = {
-    input: 'Start in '+initialText+' and search for '+targetText+'. Green marks the initial position; red marks the goal.',
-    prepare: 'Amplitude spreads coherently into all '+STATE_COUNT+' modes. Preparation ends at '+(100/STATE_COUNT).toFixed(3)+'% in each mode.',
-    oracle: 'Only the marked mode changes phase. Its probability stays fixed while its contribution interferes differently in space.',
-    inverse: 'The exact inverse mixer brings the state into the reference basis.',
-    reference: 'The '+initialText+' coefficient turns through π while every other logical coefficient stays fixed.',
-    forward: 'The forward mixer completes the reflection. Unmarked contributions cancel and the marked mode grows.',
-  };
-  dom.gateDescription.textContent = complete ? (100*expectedProbability(ITERATIONS,side)).toFixed(3)+'% marked-mode probability after '+ITERATIONS+' iterations.' : descriptions[kind];
-  const stepKey = `${simulation.revision}/${target}/${gate?.index ?? -1}`;
-  geometry.update({ target, initial, kind, progress, running: busy, paused: simulation.paused, iteration, complete,
-    amplitudes: simulation.amplitudes, startAmplitudes: gate?.startAmplitudes || simulation.amplitudes, stepKey });
-  document.documentElement.dataset.stage = String(simulation.completed);
-  document.documentElement.dataset.gate = kind;
-  document.documentElement.dataset.progress = String(progress);
-  document.documentElement.dataset.target = String(target);
-  document.documentElement.dataset.initial = String(initial);
-  if (flow) {
-    const stats = flow.statistics(target, progress, !busy || simulation.paused);
-    dom.particleProbability.textContent = formatProbability(stats.boxProbability);
-    dom.flowStatus.textContent = `${stats.count.toLocaleString()} guided particles · sampled spatial probability`;
-    document.documentElement.dataset.particleFailures = String(stats.failures);
-    document.documentElement.dataset.particleLag = String(stats.maxLag);
-  }
-  if (previousBusy !== busy) { previousBusy = busy; dom.waveArea.classList.toggle('busy', busy); }
-}
-
-function installEvents() {
-  syncParticleCountSlider();
-  dom.gridSize.addEventListener('input', () => setGridSize(dom.gridSize.value));
-  dom.selectionBack.addEventListener('click', () => setSelectionStep('initial'));
-  dom.selectionNext.addEventListener('click', () => setSelectionStep({ initial: 'goal', goal: 'ready', ready: 'initial' }[selectionStep]));
-  dom.markersToggle.addEventListener('click', () => {
-    params.showMarkers = !params.showMarkers;
-    dom.markersToggle.setAttribute('aria-pressed', String(params.showMarkers));
-    syncUi(); renderDirty = true;
-  });
-  dom.next.addEventListener('click', startNext); dom.full.addEventListener('click', runFull);
-  dom.reset.addEventListener('click', reset); dom.pause.addEventListener('click', togglePause);
-  dom.speed.addEventListener('input', () => { params.speed = Number(dom.speed.value); dom.speedValue.textContent = `${params.speed.toFixed(2)}×`; });
-  dom.brightness.addEventListener('input', () => { params.visGain = Number(dom.brightness.value); dom.brightnessValue.textContent = params.visGain.toFixed(2); renderDirty = true; });
-  dom.phaseToggle.addEventListener('click', () => {
-    params.showPhase = !params.showPhase; dom.phaseToggle.textContent = params.showPhase ? 'ON' : 'OFF';
-    dom.phaseToggle.setAttribute('aria-pressed', String(params.showPhase));
-    dom.phaseLegendPanel.hidden = !params.showPhase;
-    dom.waveLegend.textContent = params.showPhase ? 'Hue = phase · brightness = density · dots follow j / ρ' : 'Color = density · arrows = probability current · dots follow j / ρ';
-    renderDirty = true;
-  });
-  dom.gridToggle.addEventListener('click', () => {
-    params.showGrid = !params.showGrid; dom.gridToggle.textContent = params.showGrid ? 'ON' : 'OFF';
-    dom.gridToggle.setAttribute('aria-pressed', String(params.showGrid));
-    dom.waveLabels.hidden = !params.showGrid; renderDirty = true;
-  });
-  for (const [id, key] of [['currentToggle','showCurrent'],['particlesToggle','showParticles'],['trailsToggle','showTrails']]) {
-    dom[id].addEventListener('click', () => {
-      params[key] = !params[key]; dom[id].setAttribute('aria-pressed', String(params[key]));
-      if (key === 'showTrails') flow?.clearTrails();
-      renderDirty = true;
-    });
-  }
-  for (const key of ['particleSize','arrowGrid','currentGain']) {
-    dom[key].addEventListener('input', () => {
-      params[key] = Number(dom[key].value); dom[`${key}Value`].textContent = String(params[key]); renderDirty = true;
-    });
-  }
-  dom.trailHalfLife.addEventListener('input', () => {
-    params.trailHalfLife = Number(dom.trailHalfLife.value);
-    dom.trailHalfLifeValue.textContent = `${params.trailHalfLife.toFixed(1)} s`;
-  });
-  dom.particleCount.addEventListener('input', () => showParticleCount(particleCountFromSlider()));
-  dom.particleCount.addEventListener('change', () => {
-    const count = particleCountFromSlider();
-    if (count !== params.particleCount) setParticleCount(count, dom.particleCount.value);
-  });
-  dom.minui.addEventListener('click', () => {
-    dom.uibody.hidden = !dom.uibody.hidden; dom.minui.textContent = dom.uibody.hidden ? '+' : '−';
-    dom.minui.setAttribute('aria-expanded', String(!dom.uibody.hidden));
-  });
-  dom.circuitToggle.addEventListener('click', () => {
-    const collapsed = dom.circuitPanel.classList.toggle('collapsed');
-    dom.circuitToggle.textContent = collapsed ? '+' : '−'; dom.circuitToggle.setAttribute('aria-expanded', String(!collapsed));
-  });
-  canvas.addEventListener('click', event => {
-    if (simulation.active || selectionStep === 'ready') return;
-    const bounds = canvas.getBoundingClientRect(), side = simulation.model.side;
-    const x = Math.min(side - 1, Math.max(0, Math.floor(side * (event.clientX - bounds.left) / bounds.width)));
-    const y = Math.min(side - 1, Math.max(0, Math.floor(side * (bounds.bottom - event.clientY) / bounds.height)));
-    if (selectionStep === 'initial') chooseInitial(side * x + y);
-    else chooseTarget(side * x + y);
-  });
-  window.addEventListener('keydown', event => {
-    if (event.target.matches('input,button,summary,[contenteditable]')) return;
-    if (event.code === 'Space') { event.preventDefault(); togglePause(); }
-    if (event.key.toLowerCase() === 'r') reset();
-  });
-  const layoutObserver = new ResizeObserver(layout);
-  for (const element of [dom.stage, dom.waveHeader, dom.waveFooter]) layoutObserver.observe(element);
-  window.addEventListener('resize', layout);
-}
-
-function layout() {
-  const side = Math.max(160, Math.floor(Math.min(dom.stage.clientWidth,
-    dom.stage.clientHeight - dom.waveHeader.offsetHeight - dom.waveFooter.offsetHeight - 24)));
-  dom.waveArea.style.width = `${side}px`; dom.waveArea.style.height = `${side}px`;
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  const pixels = Math.round(side * dpr);
-  if (canvas.width !== pixels || canvas.height !== pixels) { canvas.width = pixels; canvas.height = pixels; renderDirty = true; }
-}
-
-function compileShader(type, source) {
-  const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
-  return shader;
-}
-function createProgram(vertex, fragment, uniforms, varyings) {
-  const program = gl.createProgram();
-  const vs = compileShader(gl.VERTEX_SHADER, vertex), fs = compileShader(gl.FRAGMENT_SHADER, fragment);
-  gl.attachShader(program, vs); gl.attachShader(program, fs);
-  if (varyings) gl.transformFeedbackVaryings(program, varyings, gl.INTERLEAVED_ATTRIBS);
-  gl.linkProgram(program);
-  gl.deleteShader(vs); gl.deleteShader(fs);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
-  return { program, uniforms: Object.fromEntries(uniforms.map(name => [name, gl.getUniformLocation(program, name)])) };
-}
-async function loadShader(name) {
-  // Keep fetched shaders on the same release as the module that compiles them.
-  const url = new URL(`./shaders/${name}`, import.meta.url);
-  url.search = new URL(import.meta.url).search;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Unable to load ${name}: ${response.status}`);
-  return response.text();
-}
-
-function reconstructWave() {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, waveFbo); gl.viewport(0, 0, GRID, GRID);
-  gl.useProgram(reconstruction.program);
-  gl.uniform2fv(reconstruction.uniforms['uCoefficients[0]'], Float32Array.from(sineCoefficients(simulation.amplitudes)));
-  gl.uniform1f(reconstruction.uniforms.uGridSize, GRID);
-  gl.uniform1i(reconstruction.uniforms.uSide, simulation.model.side);
-  gl.drawArrays(gl.TRIANGLES, 0, 3); waveDirty = false;
+  const q = hovered >= 0 && hovered < stateCount ? hovered : state.target;
+  const phase = state.probabilities[q] > 1e-12 ? `${(Math.atan2(state.amplitudes[2*q+1],state.amplitudes[2*q])/Math.PI).toFixed(2)}π` : 'undefined at zero';
+  text(dom.inspectState,`${ket(q)} · ${percent(state.probabilities[q])}\nPhase ${phase}${q === state.target ? '\nMarked state' : q === state.initial ? '\nInitial state' : ''}`);
+  dom.phaseLegend.hidden = !options.phaseColors;
 }
 function render() {
-  gl.bindVertexArray(vao);
-  if (waveDirty) reconstructWave();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.useProgram(renderer.program); const u = renderer.uniforms;
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, waveTexture); gl.uniform1i(u.uWave, 0);
-  gl.uniform1f(u.uVisGain, params.visGain); gl.uniform1f(u.uVisGamma, params.visGamma);
-  gl.uniform1i(u.uShowPhase, params.showPhase ? 1 : 0); gl.uniform1i(u.uShowGrid, params.showGrid ? 1 : 0);
-  gl.uniform1i(u.uSide, simulation.model.side);
-  gl.uniform1i(u.uTarget, simulation.target); gl.uniform1i(u.uInitial, simulation.initial);
-  gl.uniform1i(u.uShowMarkers, params.showMarkers ? 1 : 0);
-  const gate = simulation.active;
-  gl.uniform1i(u.uGateRegion, gate?.kind === 'oracle' ? simulation.target : gate?.kind === 'reference' ? simulation.initial : -1);
-  gl.uniform1f(u.uGateFlash, gate ? Math.sin(Math.PI * gate.progress) : 0);
-  gl.uniform1f(u.uPixelSize, 1 / canvas.width);
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
-  flow.render(canvas, { ...params, target: simulation.target }, simulation.active);
-  glError = gl.getError() || glError;
-  document.documentElement.dataset.glError = String(glError);
-  renderDirty = false;
+  const state = simulation.snapshot(); syncUI(state);
+  renderer?.draw({...state, labels:simulation.model.labels},options); dirty = false;
 }
-function advance(seconds) {
-  if (simulation.active && !simulation.paused && Number.isFinite(seconds) && seconds > 0) {
-    let remaining = seconds;
-    while (simulation.active && remaining > 1e-12) {
-      const gate = simulation.active, dt = Math.min(.02, remaining, gate.duration-gate.elapsed);
-      if (dt <= 1e-12) break;
-      flow?.step(gate, simulation.target, Math.min(1,(gate.elapsed+dt)/gate.duration), dt, params);
-      simulation.advance(dt); remaining -= dt;
-    }
-    markChanged();
-  }
-  syncUi();
-  if (ready && (waveDirty || renderDirty)) render();
-}
+function refresh() { dirty = true; if (renderer && ready) render(); }
+function advance(seconds) { simulation.advance(seconds); refresh(); return simulation.snapshot(); }
 
-// Recording keeps the inherited bridge; the named API is also used by the
-// reproducible browser verification page. Reads expose the actual GPU texture.
+dom.gridSize.addEventListener('input',()=>setGridSize(dom.gridSize.value));
+dom.initialState.addEventListener('change',()=>choose('initial',dom.initialState.value));
+dom.targetState.addEventListener('change',()=>choose('target',dom.targetState.value));
+dom.selectInitial.addEventListener('click',()=>setSelection('initial'));
+dom.selectTarget.addEventListener('click',()=>setSelection('target'));
+dom.next.addEventListener('click',startNext); dom.full.addEventListener('click',runFull);
+dom.reset.addEventListener('click',reset); dom.pause.addEventListener('click',togglePause);
+dom.speed.addEventListener('input',()=>setSpeed(dom.speed.value));
+for (const key of ['phaseColors','valueLabels']) dom[key].addEventListener('change',()=>{ options[key]=dom[key].checked; refresh(); });
+dom.orbitLeft.addEventListener('click',()=>renderer?.orbit(-.25)); dom.orbitRight.addEventListener('click',()=>renderer?.orbit(.25));
+dom.zoomIn.addEventListener('click',()=>renderer?.zoom(1.15)); dom.zoomOut.addEventListener('click',()=>renderer?.zoom(1/1.15));
+dom.topView.addEventListener('click',()=>renderer?.setView({yaw:0,elevation:Math.PI/2-.015,zoom:1.15}));
+dom.resetView.addEventListener('click',()=>renderer?.resetView());
+window.addEventListener('keydown',event=>{
+  if (event.target.closest('input,select,button,summary,textarea,[contenteditable="true"]') || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.code === 'Space') { event.preventDefault(); togglePause(); }
+  if (event.key.toLowerCase() === 'r') reset();
+});
+
 const api = {
-  isReady: () => ready,
-  state: () => ({ ...simulation.snapshot(), boxProbability: cachedBoxProbability, grid: GRID, speed: params.speed }),
-  reset, setTarget: chooseTarget, setInitial: chooseInitial, startNext, runFull, togglePause,
-  setParticleCount, setGridSize,
-  readParticles: () => flow.readParticles(),
-  readFlow: () => { if (simulation.active) flow.prepare(simulation.active, simulation.target); return flow.readField(); },
-  particleStats: () => flow.statistics(simulation.target, simulation.active?.progress ?? (simulation.last ? 1 : 0), true),
-  setSpeed(value) { params.speed = Math.max(.1, Math.min(3, Number(value) || 1)); dom.speed.value = params.speed; dom.speedValue.textContent = `${params.speed.toFixed(2)}×`; },
-  advanceTime(seconds) { advance(seconds); return this.state(); },
-  beginFrameRecording() { frameRecordingActive = true; },
-  endFrameRecording() { frameRecordingActive = false; lastTime = null; },
-  renderRecordingFrame({ fps = 60 } = {}) { advance(params.speed / fps); },
-  readWave() {
-    if (waveDirty) render();
-    const pixels = new Float32Array(GRID * GRID * 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, waveFbo); gl.readPixels(0, 0, GRID, GRID, gl.RGBA, gl.FLOAT, pixels);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); return pixels;
-  },
-  gpuInfo() {
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    return { renderer: gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER), grid: GRID, error: gl.getError() || glError };
-  },
+  isReady:()=>ready && !renderer?.lost,
+  state:()=>simulation.snapshot(), reset, setInitial:q=>choose('initial',q), setTarget:q=>choose('target',q),
+  setGridSize, startNext, runFull, togglePause, setSpeed, advanceTime:advance,
+  cameraState:()=>({...renderer.view}),
+  setCamera:view=>{ renderer.setView(view); refresh(); return {...renderer.view}; },
+  resetCamera:()=>{ renderer.resetView(); refresh(); },
+  projectState:(q,top=true)=>renderer.projectState(q,top),
+  pickAt:(x,y)=>renderer.hitTest(x,y),
+  histogram:()=>({side:simulation.model.side,heights:simulation.snapshot().probabilities.map(p=>columnHeight(p,simulation.model.side)),maximum:columnHeight(1,simulation.model.side)}),
+  beginFrameRecording:()=>{recording=true;lastTime=null;},
+  endFrameRecording:()=>{recording=false;lastTime=null;},
+  renderRecordingFrame:({fps=60}={})=>advance(options.speed/(Number.isFinite(fps) && fps>0 ? fps : 60)),
 };
-window.GroverMultiRegion = api;
+window.OrdinaryGrover = api;
+// Keep the existing canvas recorder's deterministic-clock contract.
 window.BohmianGrover2D = api;
 
-async function main() {
-  makeTargetGrid(); installEvents(); layout(); syncUi();
-  gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false });
-  if (!gl || !gl.getExtension('EXT_color_buffer_float')) throw new Error('This wave view requires WebGL2 with floating-point render targets.');
-  const linear = !!gl.getExtension('OES_texture_float_linear');
-  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.DITHER);
-  vao = gl.createVertexArray(); gl.bindVertexArray(vao);
-  const [vertex, waveSource, renderSource] = await Promise.all([
-    loadShader('fullscreen.vert'), loadShader('mode_wave.frag'), loadShader('multiregion_render.frag'),
-  ]);
-  reconstruction = createProgram(vertex, waveSource, ['uCoefficients[0]', 'uGridSize', 'uSide']);
-  renderer = createProgram(vertex, renderSource, ['uSide', 'uWave', 'uVisGain', 'uVisGamma', 'uShowPhase', 'uShowGrid', 'uShowMarkers', 'uTarget', 'uInitial', 'uGateRegion', 'uGateFlash', 'uPixelSize']);
-  waveTexture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, waveTexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, linear ? gl.LINEAR : gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, linear ? gl.LINEAR : gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, GRID, GRID, 0, gl.RGBA, gl.FLOAT, null);
-  waveFbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, waveFbo);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, waveTexture, 0);
-  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Could not create the floating-point wave texture.');
-  const initializedFlow = new FlowRenderer(gl, GRID, loadShader, createProgram);
-  await initializedFlow.init(vertex); flow = initializedFlow;
-  flow?.reset(params.particleCount,simulation.initial,simulation.model.side);
-  ready = true; lastUiKey = ''; syncUi(); dom.loading.hidden = true; document.documentElement.dataset.webgl2 = 'ready';
-  document.documentElement.dataset.viewMode = 'single'; render();
-  requestAnimationFrame(function loop(now) {
-    const dt = lastTime === null ? 0 : Math.min(.05, Math.max(0, (now - lastTime) / 1000));
-    lastTime = now;
-    if (!frameRecordingActive) advance(dt * params.speed);
-    requestAnimationFrame(loop);
+buildGridUI();
+try {
+  renderer = new HistogramRenderer(dom.c, {onChange:markDirty,onError:error,
+    onHover:q=>{hovered=q;markDirty();},
+    onPick:q=>{hovered=q; if (selection) choose(selection,q); else refresh();},
   });
-}
-main().catch(error => {
-  console.error(error); dom.loading.hidden = true; dom.error.hidden = false;
-  dom.error.textContent = error.message; document.documentElement.dataset.webgl2 = 'error';
-});
+  ready = true; render();
+  new ResizeObserver(markDirty).observe(dom.plotArea);
+  window.addEventListener('resize',markDirty);
+  function frame(time) {
+    const dt = lastTime === null ? 0 : Math.min(.05,(time-lastTime)/1000); lastTime=time;
+    if (!recording && simulation.active && !simulation.paused && !renderer.lost) {simulation.advance(dt*options.speed);dirty=true;}
+    try {if (dirty) render();} catch (failure) {ready=false;error(failure.message);return;}
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+} catch (failure) {ready=false;error(failure.message);syncUI(simulation.snapshot());console.error(failure);}

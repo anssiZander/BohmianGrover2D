@@ -1,286 +1,103 @@
-# Grover Search 2D — MultiRegion
+# Ordinary Grover
 
-A single scalar 2D wave encodes N² logical outcomes on selectable 2×2, 3×3,
-4×4 and 5×5 grids (default 4×4). This branch has no spin degree of freedom.
-This branch uses exact continuous unitary mode gates, displayed with the original
-rainbow phase and density palettes, dark blue panels, cyan grid, green initial
-outline and crimson target outline.
-Conserved-current arrows and guided yellow particles with trails show the
-spatial probability transport. The display remains a single search view.
+The `Ordinary-Grover` branch presents the logical algorithm as a **3D histogram
+on a selectable 2×2–5×5 grid**. There are no displayed waves, particles, currents,
+or spatial-density calculations. Column height is the computational-basis
+probability `|a|²`, with a fixed linear 0–100% scale. Optional column colors show
+amplitude phase, so phase-only gates remain visible.
+
+This branch starts from `MultiRegion` and reuses its `multiregion-core.js`
+**without modifications**. It preserves the exact operations, continuous gate
+interpolations, initial/marked-state choices, and stopping points. The other
+branches, including `main`, are independent.
 
 ## Run
 
-Serve this folder with VS Code Live Server, or:
+Serve this directory with a static server, for example:
 
 ```powershell
 python -m http.server 8835 --bind 127.0.0.1
 ```
 
-Open `http://127.0.0.1:8835/`. A desktop browser with WebGL2 and floating-point
-render targets is required. No dependencies or build step are needed.
+Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
+external libraries, CDN requests, package installations, or build steps.
+All active page assets and module imports use `?v=20261014-ordinary1`.
 
-## GitHub Pages updates
+## Sequence
 
-Page assets and all module imports share a `?v=20261014-grids2` release suffix.
-Shader requests inherit it from `main.js`. This prevents a browser from pairing
-new HTML with cached scripts or shaders from a previous release.
-Before publishing changed assets, replace this release value across `index.html`
-and the JavaScript imports with a new unique value, and update this note.
-Run `node tests/static-check.mjs` to check that their versions agree.
-GitHub Pages can also cache HTML for several minutes; after a deployment, a
-hard refresh (Ctrl+Shift+R) retrieves the new page if an existing tab is stale.
+1. Begin with one column at 100% in the chosen initial state `|i⟩`.
+2. Prepare with `H`: every state has probability `1/N²` on an N×N grid.
+3. Apply the oracle `Oω`, flipping only the marked amplitude's phase.
+4. Apply `H†`, the inverse preparation.
+5. Apply `Sᵢ`, flipping the initial-state amplitude's phase.
+6. Apply `H`, completing one amplification round. Repeat steps 3–6.
 
-## Controls and readouts
+The diffuser `H Sᵢ H†` differs from the conventional Grover reflection only by
+an overall minus sign. It has the same probabilities. Preparation runs once;
+the remaining four operations repeat 1, 2, 3, or 3 times for 2×2, 3×3, 4×4,
+or 5×5 respectively. For the default 4×4 grid, the marked probability is 6.25%
+after preparation and 47.265625%, 90.844727%, and 96.131897% after each round.
 
-- **Grid size** selects 2×2 through 5×5. Changing it resets the wave, particles,
-  trails, clock, pause and iteration history, including during a running search.
-  Selected coordinates survive where possible and clamp to the new boundary.
-  The circuit shows two N-level position registers; labels, goal regions,
-  Bloch projection and recording filenames follow the chosen size.
+On 2×2 and 4×4, `H` is the usual tensor-product qubit Hadamard. The 3×3 and
+5×5 options preserve the original Hermitian complex balanced mixer,
+`B[(x,y),(u,v)] = exp(2πi(xv−yu)/N)/N`, labelled **B** to distinguish these
+non-qubit grids. `B† = B` and `B² = I`. Every basis input prepares equal
+probabilities; nonzero initial coordinates can produce different phases.
 
-- Choose the initial state and goal directly on the main wave. The compact
-  guide shares the title margin, leaving the main grid large. Click an initial
-  square, select **Next: choose goal**, click a goal square, and select **Done**.
-  **Back: initial** revisits the input; **Choose states** starts selection again.
-  The sidebar goal selector has been removed; use the main wave for state selection.
-- Run immediately to use the existing defaults, input `|0000⟩` and goal
-  `|1111⟩`. **Apply next operation** and **Run full search** sit side by side;
-  individual gate buttons have been removed. A full search runs the optimal number of iterations for the chosen size.
-  Both choices survive Reset and full runs. Selecting a state resets the search,
-  and selection is locked during running or paused gates.
-- **Initial / goal markers**, below the wave, hides both colored outlines,
-  cell tints, gate flashes and START/GOAL tags. It is independent of the grid
-  toggle and also affects recordings. Coincident choices show a green inner
-  outline and a red outer outline. Hiding markers does not change the state,
-  particles, current or clock.
-- **Phase colors** retains both original palettes: ON shows phase hue with
-  density brightness; OFF uses the density-color palette. The legend follows
-  this display setting; the wave and trajectories are unchanged.
-- **Pause**, **Reset**, and gate speed control the same gate clock. Space toggles
-  pause when a form control is not focused; R resets. Brightness and phase/grid
-  toggles affect only the display.
-- The circuit highlights the active gate. Its iteration badges retain the
-  marked probabilities at the completed diffuser checkpoints.
-- The effective Bloch sphere follows the actual complex amplitudes. Drag it or
-  use its arrow keys to orbit; Home or Reset view restores the camera. Its gold
-  vector describes the normalized marked/unmarked projection, using the phases
-  of the prepared state `H|i⟩` for the selected input. The weight
-  bar accounts for probability outside that subspace during individual gates.
-- **Start Recording** captures the wave canvas as WebM; panels are excluded.
-- **Current arrows**, **Particles**, and **Trails**, beneath the wave, toggle
-  independently. Hidden particles continue evolving. The arrows display current
-  strength on a compressed scale; particles move at current divided by density.
-- **Flow settings** adjusts arrow density/gain, dot size, trail length, and particle count.
-  The particle slider is logarithmic from 1,000 to 100,000 (default 4,000). Its
-  count updates while dragging; releasing it resets the search with that count.
-  Changing the count is locked during a running gate.
-- **Trail length** sets the fading half-life (0.1–12 gate-time seconds, default
-  1.5). It can change during a gate without resetting the wave, particles, or
-  existing history. Faster playback advances trail fading on the same clock.
-  Trails use DoubleSlit2.0's soft stamps, additive floating-point accumulation,
-  exponential exposure, and screen blending, in the existing golden yellow.
-  Stamps sweep between integrated particle positions to keep paths connected.
-- **Particles inside goal box** is a finite-sample estimate of the spatial
-  probability. Compare it with **Inside goal box**, not the logical percentage.
+Labels are binary for 2×2/4×4 and `|x,y⟩` for odd grids. The state index is
+`q = N*x + y`, matching the original implementation. The animation between
+gate endpoints uses the original smooth unitary evolution, not a linear
+interpolation of displayed column heights.
 
-Labels are binary for 2×2 and 4×4, and `|x,y⟩` for 3×3 and 5×5.
-At the default 4×4 size they use `|x₁x₀y₁y₀⟩`. Columns increase left to right and rows bottom to top.
-The upper-left box is `|0011⟩`, upper-right `|1111⟩`, lower-left `|0000⟩`, and
-lower-right `|1100⟩`.
+## Controls
 
-The percentages on the grid are **logical-mode probabilities**. The diagnostic
-**Inside goal box** integrates the continuous spatial density over the selected
-1/N by 1/N region. These differ because orthogonal packets have
-overlapping spatial tails. Neither the display grid nor the target tint changes
-the Hamiltonian or clips the wave into disconnected boxes.
+- **Apply next operation** animates one gate and stops at its checkpoint.
+  **Run full search** starts again from the selected input and runs all gates.
+- **Pause/Resume**, **Reset**, and animation speed control the same clock.
+  Space pauses/resumes; R resets when an input or button does not have focus.
+  Reset keeps the chosen input, marked state, and camera orientation.
+- Choose initial/marked states using the selectors or **Pick initial/marked**
+  followed by a click on a column or grid square. Selection is locked during
+  a running or paused gate. Orbit gestures never select a state.
+- **Grid size** resets the search even during a gate, clears history and pause,
+  and preserves selected coordinates where possible, clamping at the boundary.
+- **Drag** with a mouse or one finger to orbit; **scroll** or **pinch** to zoom.
+  Camera buttons orbit and zoom, **Top view** shows the full grid, and
+  **Reset view** restores the default angle. With the canvas focused, arrow
+  keys orbit, +/− zoom, and Home resets. Camera changes never affect amplitudes.
+- **Color by amplitude phase** and **Show state probabilities** affect only
+  presentation. Colors wrap continuously at ±π. A common phase shift of all
+  columns is physically irrelevant. Undefined phase at zero is reported as such.
+- The gold grid outline marks the target; the pale cyan outline marks the input.
+  Both remain visible if the selections coincide. Hover/click inspects a state.
+  Labels that would overlap are omitted; the inspector still reports every state.
+- **Start Recording** captures the histogram, its axes and labels as WebM, using
+  the existing deterministic frame clock. Files use
+  `ordinary-grover-NxN-TIMESTAMP.webm`.
 
+## Rendering and checks
 
-## Grid sizes and stopping points
+`histogram-renderer.js` renders solid cuboids with perspective and WebGL depth
+testing. Ray/AABB intersections pick the nearest column or cell. The visible
+canvas composites the WebGL scene and text labels, so recordings include both.
+The vertical scale never automatically renormalizes as probabilities change.
 
-The first peak uses `round(pi/(4 asin(1/N)) - 1/2)` iterations.
-
-| Grid | Scalar states | Iterations | Final marked probability |
-| --- | ---: | ---: | ---: |
-| 2×2 | 4 | 1 | 100.000000% |
-| 3×3 | 9 | 2 | 98.360684% |
-| 4×4 | 16 | 3 | 96.131897% |
-| 5×5 | 25 | 3 | 97.421006% |
-
-## Spatial encoding
-
-On the unit interval use normalized sine modes
-`u_n(x) = sqrt(2) sin(n pi x)`, `n = 1,...,N`.
-An orthogonal discrete sine transform constructs N localized packets:
-
-```text
-f_j(x) = sum_n T[j,n] u_n(x),                 j = 0,...,N-1
-T[j,n] = sqrt(2/N) sin((j+1/2)n pi/N),        n = 1,...,N-1
-T[j,N] = (1/sqrt(N)) sin((j+1/2)pi).
-phi_jk(x,y) = f_j(x) f_k(y).
-```
-
-The packets are orthonormal, smooth, and zero at the outer walls. Each has its
-dominant peak in its labeled region. With two packets the same transform reduces
-to the original `(u_1 +/- u_2)/sqrt(2)` construction.
-
-The full wave is `psi(x,y,t) = sum_jk c_jk(t) phi_jk(x,y)`. It always lies in the
-specified N²-dimensional subspace. The initial state is the chosen packet
-`|i⟩` (default `phi_00`). Preparation gives `H|i⟩`, with coefficients
-`|c_q| = 1/N`, hence logical probability `1/N²` in every mode.
-At N=4 the unchanged coefficients are `c_q = (-1)^popcount(q & i)/4`.
-For the default input all coefficients are positive. Other inputs have
-Hadamard signs (N=2,4) or complex phases (N=3,5), visible in the phase view. Equal logical probabilities do not
-imply perfectly flat spatial density.
-
-## Exact gate dynamics
-
-For N=2 or 4, keep `H = H_Had^(tensor 2log2(N))` in the logical packet basis.
-The original 4×4 Hamiltonian, durations and continuous path are unchanged.
-An odd number of states cannot use that qubit Hadamard. For N=3 or 5 use
-the balanced Hermitian matrix
-
-```text
-H[(x,y),(u,v)] = exp(2*pi*i*(x*v-y*u)/N)/N.
-```
-
-Character orthogonality gives `H^2=I`; conjugating an entry transposes its
-indices, so `H^dagger=H`. Every entry has magnitude `1/N`, giving balanced
-preparation from every selected input. This is an explicitly non-free mixer.
-All four sizes use the same projector Hamiltonian and its signed-time inverse:
-
-
-```text
-H_mix = pi hbar (I - H) / (2T)
-U(p) = exp(-i H_mix pT / hbar)
-     = (I+H)/2 + exp(-i pi p) (I-H)/2.
-```
-
-Here `p` is elapsed gate time divided by its duration. The two terms are the
-orthogonal positive/negative eigenspace projections of `H`. The implementation
-evaluates this exact exponential from the gate's initial complex amplitudes on
-every frame. It does not blend endpoint images, interpolate probabilities, or
-renormalize an interpolated vector. Inverse mixing uses `U(-p)`: the same endpoint
-operator, but the opposite continuous Hamiltonian evolution.
-
-Oracle and reference pulses are also exact at every intermediate time:
-
-```text
-U_q(p) = I + (exp(-i pi p) - 1) |q><q|.
-```
-
-The oracle uses `q = target`; the reference uses `q = initial`. Preparation runs once,
-then each iteration runs `oracle -> H^dagger -> reference -> H`. The implemented
-diffuser `H (I-2|i><i|) H^dagger` differs from the conventional `2|s><s|-I` only
-by a global minus sign, with `|s⟩ = H|i⟩`. The full spatial phase is displayed, including this sign.
-
-For one marked state among N², the target probability after `k` iterations is
-`sin^2((2k+1) asin(1/N))`. At the default N=4:
-
-| Iterations | Target probability |
-| --- | ---: |
-| 0 (prepared) | 6.25% |
-| 1 | 47.265625% |
-| 2 | 90.844727% |
-| 3 | 96.131897% |
-
-At N=4 the automatic run stops after three iterations. Standard pi-phase gates
-do not give exactly 100% for that state count; N=2 reaches 100% in one iteration.
-
-This is an **ideal mode-coupling Hamiltonian**, not the free-box Hamiltonian from
-the free-mixing branches. The sine functions supply a spatial encoding; their
-kinetic-energy phases are not added during these gates. Gate durations (2.4 for
-mixers, 1.6 for phase pulses at speed 1) set the pedagogical playback time and
-corresponding effective coupling strength. No ordinary phase-gradient particle
-guidance is claimed for these spatially nonlocal operations.
-
-## Conserved probability flow
-
-The added flow leaves all gate amplitudes and the wave evolution unchanged.
-We explicitly choose the curl-free current
-
-```text
-rho = |psi|^2
-laplacian chi = -partial_t rho,   normal derivative of chi = 0 at the walls
-j = gradient chi,                v = j/rho.
-```
-
-Thus `partial_t rho + divergence j = 0`, with zero flux through the outer
-walls. In this simply connected box, the Neumann problem fixes the current
-uniquely once the curl-free rule has been selected. It is also the current
-minimizing the integral of `|j|^2` among currents with the same divergence and
-normal boundary flux. Other choices can add divergence-free circulation.
-These are generalized probability-transport trajectories, not a claim that the
-nonlocal Hamiltonian singles out ordinary phase-gradient Bohmian paths.
-
-For each gate, write `psi(p) = F + exp(-i*theta) G`, with orthogonal projector
-components `F,G`, `theta = direction*pi*p`, and `p = t/T`. Then
-
-```text
-rho = |F|^2 + |G|^2 + Dc*cos(theta) + Ds*sin(theta)
-Dc = 2 Re(conj(F)*G), Ds = 2 Im(conj(F)*G)
-partial_t rho = (direction*pi/T) [-Dc*sin(theta) + Ds*cos(theta)].
-```
-
-Products of sine modes 1..N contain only cosine frequencies 0..2N on each axis.
-The Poisson problem therefore has a finite analytic spectral solution: divide
-each nonconstant cosine coefficient of `partial_t rho` by
-`pi^2*(n^2+m^2)` to get the corresponding coefficient of `chi`. The constant
-source coefficient is zero by unitarity. We differentiate this sum analytically
-to obtain `j`; there is no screen-image differencing or iterative Poisson solve.
-This construction follows the inverse-Laplacian current described by
-[Struyve and Valentini, equations 5–12](https://arxiv.org/pdf/0808.0290), adapted
-to the reflecting boundary of our square.
-
-The two current fields and complex `F,G` fields are reconstructed in 512×512
-float textures once per gate. Both arrows and particles sample these fields.
-Particles use adaptive embedded Runge–Kutta integration on the GPU. To avoid
-division by tiny density near nodes, we integrate the equivalent equations
-`dx/ds = T*j`, `dp/ds = rho`, and intersect the resulting path with the requested
-gate time using cubic dense output. No velocity cap, attraction toward the
-goal, particle respawning, or resampling during gates is used. Initial positions
-sample the actual input packet's density through its inverse CDF.
-
-Particle trajectories, GPU texture interpolation, and their finite ensemble
-have numerical/sampling error; they are tested against the continuous wave.
-Pause freezes the instantaneous arrows, positions, and trail history. Manual
-gate checkpoints hold everything still. The existing recording clock advances
-the wave and particles together, with all visible overlays in the capture.
-
-## Implementation and verification
-
-- `multiregion-core.js`: pure complex-amplitude dynamics, spatial basis,
-  probability integrals, Bloch projection, and checkpointed clock.
-- `main.js`: controls, circuit synchronization, WebGL2 resources, and recording.
-- `shaders/mode_wave.frag`: reconstructs the complex wave on a 512×512 RGBA32F
-  GPU texture from its sine coefficients. Only N² complex amplitudes evolve on
-  the CPU. `shaders/multiregion_render.frag` renders phase and density.
-- `grover-geometry.js`: the interactive sphere, driven by those same amplitudes.
-- `probability-flow.js`: exact density-source/Poisson coefficients and Born
-  sampling. `flow-renderer.js` and the `flow_*` shaders: GPU field reconstruction,
-  adaptive particle integration, current arrows, and fading trails.
-
-Legacy wave solvers remain unloaded. The original particle fragment shader and
-arrow fragment shader are reused to preserve their color and edge treatment.
+From the repository root, run:
 
 ```powershell
-node tests/static-check.mjs
-node --experimental-default-type=module --test tests/multiregion.test.mjs
-node --experimental-default-type=module --test tests/flow.test.mjs
-node --experimental-default-type=module --test tests/grid-sizes.test.mjs
-node --experimental-default-type=module --test tests/initial-state.test.mjs
+$taskTests = @(rg --files BohmianGrover2D/tests -g '*.test.mjs')
+node --experimental-default-type=module --test @taskTests
+node --experimental-default-type=module BohmianGrover2D/tests/static-check.mjs
 ```
 
-For reproducible browser/GPU checks, open `/tests/browser-check.html` on the same
-local server. It loads the production page and compares GPU texture readbacks
-against an independent dense matrix-exponential reference. See `VERIFICATION.md`
-for measured results and visual checks.
-`/tests/flow-browser-check.html` additionally checks the GPU current, particle
-region counts and 8×8 spatial histograms, every target, pause, visibility, and
-the recording clock.
-`/tests/trail-browser-check.html` checks GPU trail accumulation/fading, length
-changes without disturbing the state, pause/reset, and recording exposure.
+Serve the app and open `tests/histogram-browser-check.html` for the browser
+checks. They use the actual production UI and renderer, including all four
+grid sizes, gate checkpoints, phase-only height invariance, arbitrary/coincident
+initial and marked states, autoplay, picking around a full orbit, drag/pinch,
+keyboard/zoom/reset controls, and the recording clock. The report appears below
+the page, and the histogram is left at the prepared 4×4 checkpoint.
 
-`/tests/grid-browser-check.html` verifies every supported size, GPU wave and
-current readbacks, complete searches, particle distributions, click mapping,
-pause and resizing during playback. The existing 4×4 numerical references
-remain independent regression checks for the original gate implementations.
+The inherited physics modules and their numerical tests remain available as
+reference, but the histogram page does not load their renderers or shaders.
+Older wave/flow/geometry browser fixtures belong to the `MultiRegion` UI;
+use `histogram-browser-check.html` on this branch.
