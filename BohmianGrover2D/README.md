@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-textbook`.
+All active page assets and module imports use `?v=20261014-initial-flip`.
 
 ## Sequence
 
@@ -41,22 +41,26 @@ All active page assets and module imports use `?v=20261014-textbook`.
 2. Prepare with `H`: every amplitude has magnitude `1/N` on an N×N grid.
 3. Apply the oracle `Oω`, flipping only the marked amplitude's phase.
 4. Apply `H`, the same Hadamard, since `H† = H`.
-5. Apply `Rᵢ = 2|i⟩⟨i| − I`, keeping the initial component and reversing the others.
+5. Apply `Sᵢ = I − 2|i⟩⟨i|`, flipping only the initial-state amplitude.
 6. Apply `H` again, completing one amplification round. Repeat steps 3–6.
 
-The diffuser is exactly `D = H Rᵢ H = 2|sᵢ⟩⟨sᵢ| − I`, where `|sᵢ⟩ = H|i⟩`.
-With the all-zero input, this is the textbook inversion about the mean,
-`a → 2 × mean − a`. There is no extra overall minus sign after each round.
-The reference convention is explicit: `Rᵢ = −Sᵢ`, where `Sᵢ` would flip only the
-initial state. See the [Grover operator definition in IBM's documentation](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.grover_operator).
+The diffuser is `H Sᵢ H = I − 2|sᵢ⟩⟨sᵢ| = −D`, where `|sᵢ⟩ = H|i⟩`.
+It equals the usual Grover diffuser with an overall minus sign. This convention
+lets the middle operation visibly flip only the initial column: every other
+amplitude stays fixed throughout that operation. For the all-zero input, the
+full diffuser acts as `a → a − 2 × mean`. The overall sign changes no probability
+and is displayed explicitly, with no hidden phase correction. See the
+[Grover operator definition in IBM's documentation](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.grover_operator).
 
 The display shows every actual sign, including negative unmarked amplitudes
 inside the diffuser. For 4×4 with initial `0000` and marked `1111`, the first
 post-oracle H gives +0.875 in `0000` and ±0.125 in the other states. These are
-ordinary Hadamard interference, independent of any wave model. After the full
-first diffuser, the marked amplitude is +0.6875 and every unmarked amplitude is
-+0.1875. After round 3 they are +0.98046875 and −0.05078125 respectively: even
-the textbook convention does not keep every unmarked amplitude positive forever.
+ordinary Hadamard interference, independent of any wave model. The next Sᵢ
+flips the initial amplitude from +0.875 to −0.875 and keeps all others fixed.
+After the full first diffuser, the marked amplitude is −0.6875 and every
+unmarked amplitude is −0.1875. After round 3 they are −0.98046875 and +0.05078125
+respectively. The displayed amplitudes differ from the positive-D convention
+by the common factor `(-1)^round` at complete rounds.
 
 Preparation runs once;
 the remaining four operations repeat 1, 2, 3, or 3 times for 2×2, 3×3, 4×4,
@@ -128,8 +132,8 @@ node --experimental-default-type=module BohmianGrover2D/tests/static-check.mjs
 
 Serve the app and open `tests/histogram-browser-check.html` for the browser
 checks. They use the actual production UI and renderer, including all four
-grid sizes, gate checkpoints, the oracle's selected flip and Rᵢ's complementary
-flips with invariant
+grid sizes, gate checkpoints, the oracle's marked-only flip and Sᵢ's initial-only
+flip with stationary other amplitudes and invariant
 probabilities, arbitrary/coincident initial and marked states, autoplay,
 complex-component views, the circuit layout, picking around a full orbit,
 drag/pinch, zero-height and below-plane cameras, keyboard/zoom/reset controls,
@@ -138,8 +142,8 @@ and the recording clock. The page is left at the 4×4 oracle checkpoint. The
 `data-status="passed"` attribute on success.
 
 `tests/ordinary-core.test.mjs` checks the qubit mixer against an independent dense
-Walsh matrix, all intermediate 4×4 signs, the exact diffuser against inversion
-about the mean, complex reflection identities, and Grover probabilities for
+Walsh matrix, all intermediate 4×4 signs, the exact diffuser against minus
+inversion about the mean, complex reflection identities, and Grover probabilities for
 every initial/marked pair on all four grids.
 
 The inherited physics modules and their numerical tests remain available as

@@ -34,7 +34,7 @@ try {
     check(app.state().iterations===expectedIterations,'correct stopping iteration');
     check(byId('prepareSymbol').textContent===(side%2?'B':'H'),'qubit versus odd-grid mixer labelled accurately');
     check(byId('inverseSymbol').textContent===byId('prepareSymbol').textContent && byId('forwardSymbol').textContent===byId('prepareSymbol').textContent,'all mixer steps show the same self-inverse gate');
-    check(byId('diffuserLabel').textContent.includes('Rᵢ'),'textbook reference reflection shown explicitly');
+    check(byId('diffuserLabel').textContent.includes('Sᵢ'),'initial-state flip shown explicitly');
     const kinds = ['prepare',...Array.from({length:expectedIterations},()=>['oracle','inverse','reference','forward']).flat()];
     for (const [index,kind] of kinds.entries()) {
       const before = app.state(), oldHeights=app.histogram().heights;
@@ -46,6 +46,8 @@ try {
       close(app.state().norm,1,'norm at midpoint');
       if (['oracle','reference'].includes(kind)) {
         vector(app.state().probabilities,before.probabilities,'phase pulse keeps probabilities fixed at midpoint');
+        const selected=kind==='oracle'?before.target:before.initial;
+        vector(app.state().amplitudes.filter((_,k)=>Math.floor(k/2)!==selected),before.amplitudes.filter((_,k)=>Math.floor(k/2)!==selected),'all other amplitudes stay fixed during the flip');
       }
       app.togglePause(); const paused=app.state();app.advanceTime(100);vector(app.state().amplitudes,paused.amplitudes,'pause freezes amplitudes');app.togglePause();
       app.advanceTime(duration/2);
@@ -56,8 +58,8 @@ try {
       vector(histogram.heights.map(v=>v/histogram.maximum),state.amplitudes.filter((_,i)=>i%2===0),'column heights are signed real amplitudes');
       if (kind==='prepare') state.probabilities.forEach(p=>close(p,1/count,'balanced preparation'));
       if (['oracle','reference'].includes(kind)) {
-        const flips = q => kind==='oracle' ? q===state.target : q!==state.initial;
-        vector(histogram.heights,oldHeights.map((v,q)=>flips(q)?-v:v),'oracle flips the target; Rᵢ flips all except the initial state');
+        const flips = q => q===(kind==='oracle'?state.target:state.initial);
+        vector(histogram.heights,oldHeights.map((v,q)=>flips(q)?-v:v),'oracle flips only the target; Sᵢ flips only the initial state');
         vector(state.probabilities,before.probabilities,'phase pulse keeps probabilities fixed at endpoint');
         vector(state.amplitudes,before.amplitudes.map((v,k)=>flips(Math.floor(k/2))?-v:v),'reflection has the exact intended signs in both components');
       }
@@ -86,9 +88,17 @@ try {
   app.startNext();app.advanceTime(2.4);
   close(app.histogram().values[0],.875,'genuine intermediate Hadamard initial amplitude');
   close(app.histogram().values[3],-.125,'genuine negative unmarked Hadamard amplitude retained');
-  app.startNext();app.advanceTime(1.6);app.startNext();app.advanceTime(2.4);
-  close(app.histogram().values[15],.6875,'textbook marked amplitude has no extra global minus');
-  app.histogram().values.forEach((value,q)=>close(value,q===15?.6875:.1875,'first diffuser matches inversion about the mean'));
+  const beforeInitialFlip=app.histogram().values;
+  app.startNext();app.advanceTime(.8);
+  close(app.histogram().values[0],0,'initial column crosses zero during Sᵢ');
+  close(app.state().amplitudes[1],-.875,'initial amplitude rotates through the imaginary direction');
+  vector(app.histogram().values.slice(1),beforeInitialFlip.slice(1),'all other columns stay fixed while initial flips');
+  app.advanceTime(.8);
+  close(app.histogram().values[0],-.875,'initial column finishes below zero');
+  check(byId('inspectState').textContent.includes('initial') && byId('inspectState').textContent.includes('−0.875'),'reference inspector shows the initial-state flip');
+  app.startNext();app.advanceTime(2.4);
+  close(app.histogram().values[15],-.6875,'marked amplitude retains the explicit global minus');
+  app.histogram().values.forEach((value,q)=>close(value,q===15?-.6875:-.1875,'first diffuser matches minus inversion about the mean'));
   app.reset();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   byId('levelView').click();await frame();
   close(app.cameraState().elevation,0,'level view reaches exactly zero elevation');
@@ -134,6 +144,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: independent Grover core, identical H steps, genuine intermediate negatives, textbook diffuser signs, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: initial-only sign flip, stationary other columns during phase gates, independent Grover core, identical H steps, genuine intermediate negatives, explicit diffuser global sign, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

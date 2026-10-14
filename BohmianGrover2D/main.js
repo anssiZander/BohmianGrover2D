@@ -1,5 +1,5 @@
-import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-textbook';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-textbook';
+import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-initial-flip';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-initial-flip';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
@@ -46,10 +46,10 @@ function buildGridUI() {
   text(dom.repeatCaption, `Prepare once; repeat the four remaining gates ${iterations} ${iterations === 1 ? 'time' : 'times'}.`);
   text(dom.prepareSymbol, symbol()); text(dom.forwardSymbol, symbol());
   text(dom.inverseSymbol, symbol());
-  text(dom.diffuserLabel, `DIFFUSER = ${symbol()} Rᵢ ${symbol()}`);
+  text(dom.diffuserLabel, `DIFFUSER = ${symbol()} Sᵢ ${symbol()}`);
   text(dom.circuitXLabel, `x (${side})`); text(dom.circuitYLabel, `y (${side})`);
   text(dom.circuitTitle, `Grover circuit: two ${side}-level registers`);
-  text(dom.circuitDescription, `Preparation runs once. Oracle, ${symbol()}, reference reflection Rᵢ and the same ${symbol()} repeat ${iterations} times.`);
+  text(dom.circuitDescription, `Preparation runs once. Oracle, ${symbol()}, initial-state sign flip Sᵢ and the same ${symbol()} repeat ${iterations} times.`);
   dom.circuitPanel.setAttribute('aria-label', dom.circuitTitle.textContent);
   const odd = side % 2;
   text(dom.mixerNote, odd ? `B† = B: both steps use the same balanced ${stateCount}-state mixer. This is generalized amplitude amplification, not a qubit register.`
@@ -58,7 +58,7 @@ function buildGridUI() {
     : 'On 2×2 and 4×4 grids, H is the tensor-product qubit Hadamard: H† = H and H² = I. H can produce negative amplitudes through interference, including in unmarked states.');
   text(dom.expectedValue, percent(expectedProbability(iterations,side)));
   text(dom.iterationsNote, `The first Grover peak occurs after ${iterations} amplification ${iterations === 1 ? 'round' : 'rounds'} for ${stateCount} states.`);
-  dom.circuitDiagram.setAttribute('aria-label', `Circuit for ${stateCount} states: ${symbol()} preparation, then ${iterations} repeats of oracle, ${symbol()}, reference reflection Rᵢ, and the same ${symbol()}.`);
+  dom.circuitDiagram.setAttribute('aria-label', `Circuit for ${stateCount} states: ${symbol()} preparation, then ${iterations} repeats of oracle, ${symbol()}, initial-state sign flip Sᵢ, and the same ${symbol()}.`);
 }
 function setGridSize(side) {
   if (!simulation.setGridSize(Number(side))) return false;
@@ -105,13 +105,13 @@ function description(kind) {
     oracle: amplitudeView ? `The oracle flips the marked amplitude ${ket(simulation.target)} to its negative. The column crosses zero; its probability stays unchanged.`
       : `The oracle flips the marked amplitude's sign. Probabilities stay unchanged; choose Real amplitude to see the column flip.`,
     inverse: `${mixer} = ${mixer}† mixes the amplitudes after the oracle. Unmarked columns can become negative: these are genuine intermediate circuit amplitudes.`,
-    reference: `Rᵢ = 2|i⟩⟨i| − I keeps ${ket(simulation.initial)} unchanged and reverses all other amplitudes. Every probability stays fixed.`,
-    forward: `${mixer} completes the diffuser. For an initially all-positive uniform state, the three steps give a → 2 × mean − a, with no extra overall minus sign.`,
+    reference: `Sᵢ flips only the initial-state amplitude ${ket(simulation.initial)}. Every other amplitude stays fixed, and all probabilities stay unchanged.`,
+    forward: `${mixer} completes amplification. ${mixer} Sᵢ ${mixer} has an overall minus sign relative to inversion about the mean; this changes no probability.`,
   }[kind];
 }
 function nextLabel(gate) {
   if (!gate) return 'Search complete';
-  return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()} · diffuser 1/3`,reference:'Apply Rᵢ · diffuser 2/3',forward:`Apply ${symbol()} · diffuser 3/3`}[gate.kind];
+  return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()} · diffuser 1/3`,reference:'Apply Sᵢ · flip initial',forward:`Apply ${symbol()} · diffuser 3/3`}[gate.kind];
 }
 function syncUI(state) {
   const {stateCount,iterations,gates} = simulation.model, gate = simulation.active, next = gates[state.completed];
@@ -128,7 +128,7 @@ function syncUI(state) {
   dom.progressBar.style.width = `${progress*100}%`; dom.gateProgress.setAttribute('aria-valuenow',Math.round(progress*100));
   text(dom.stageStatus, gate ? `${state.paused ? 'Paused · ' : ''}${gate.name}${gate.iteration ? ` · round ${gate.iteration}/${iterations}` : ''}`
     : !next ? 'Search complete · inspect the result' : state.completed ? 'Checkpoint · apply the next operation' : 'Ready to prepare');
-  const stageLabel = {inverse:`${symbol()} · DIFFUSER 1/3`,reference:'Rᵢ · DIFFUSER 2/3',forward:`${symbol()} · DIFFUSER 3/3`}[state.kind] || state.kind.toUpperCase();
+  const stageLabel = {inverse:`${symbol()} · DIFFUSER 1/3`,reference:'Sᵢ · FLIP INITIAL',forward:`${symbol()} · DIFFUSER 3/3`}[state.kind] || state.kind.toUpperCase();
   text(dom.plotBadge,state.busy ? `${state.paused ? 'PAUSED · ' : ''}${stageLabel}${state.iteration ? ` · ROUND ${state.iteration}` : ''}`
     : state.completed === gates.length ? 'SEARCH COMPLETE' : state.completed ? `${stageLabel} · CHECKPOINT` : 'INPUT STATE');
   const probability = state.probabilities[state.target], formatted = percent(probability);
@@ -153,7 +153,7 @@ function syncUI(state) {
     const checkpoint = state.checkpoints.find(item => item.iteration === Number(node.dataset.iteration) && item.kind === 'forward');
     node.classList.toggle('complete',!!checkpoint); text(node.lastElementChild,checkpoint ? percent(checkpoint.targetProbability) : '—');
   }
-  const q = hovered >= 0 && hovered < stateCount ? hovered : state.target;
+  const q = hovered >= 0 && hovered < stateCount ? hovered : state.kind === 'reference' ? state.initial : state.target;
   const phase = state.probabilities[q] > 1e-12 ? `${(Math.atan2(state.amplitudes[2*q+1],state.amplitudes[2*q])/Math.PI).toFixed(2)}π` : 'undefined at zero';
   text(dom.inspectState,`${ket(q)}${q === state.target ? ' · marked' : q === state.initial ? ' · initial' : ''}\nRe(a) ${formatAmplitude(state.amplitudes[2*q])}    Im(a) ${formatAmplitude(state.amplitudes[2*q+1])}\nProbability ${percent(state.probabilities[q])} · phase ${phase}`);
   dom.phaseLegend.hidden = !options.phaseColors;

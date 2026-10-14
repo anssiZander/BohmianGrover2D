@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Ordinary Grover · 4×4</title>
   <link rel="icon" href="data:,"/>
-  <link rel="stylesheet" href="./styles.css?v=20261014-textbook"/>
+  <link rel="stylesheet" href="./styles.css?v=20261014-initial-flip"/>
 </head>
 <body>
 <div id="wrap">
@@ -57,15 +57,15 @@
       <div class="head"><h3>Quantum gate circuit</h3><button id="circuitToggle" class="mini" type="button" aria-expanded="true" aria-label="Collapse circuit">−</button></div>
       <div class="circuitBody">
         <svg id="circuitDiagram" class="circuitSvg" viewBox="0 0 840 188" role="img" aria-labelledby="circuitTitle circuitDescription">
-          <title id="circuitTitle">Grover circuit: two 4-level registers</title><desc id="circuitDescription">Preparation runs once. Oracle, H, reference reflection Rᵢ and H repeat three times.</desc>
+          <title id="circuitTitle">Grover circuit: two 4-level registers</title><desc id="circuitDescription">Preparation runs once. Oracle, H, initial-state sign flip Sᵢ and H repeat three times.</desc>
           <line class="circuitWireGlow" x1="90" y1="55" x2="812" y2="55"/><line class="circuitWire" x1="90" y1="55" x2="812" y2="55"/><text class="circuitInput" id="circuitInputX" x="6" y="61">|0⟩</text><text class="circuitBit" id="circuitXLabel" x="45" y="59">x (4)</text>
           <line class="circuitWireGlow" x1="90" y1="105" x2="812" y2="105"/><line class="circuitWire" x1="90" y1="105" x2="812" y2="105"/><text class="circuitInput" id="circuitInputY" x="6" y="111">|0⟩</text><text class="circuitBit" id="circuitYLabel" x="45" y="109">y (4)</text>
           <g class="circuitGate future" data-circuit-kind="prepare"><rect class="gateBox" x="112" y="23" width="82" height="114" rx="9"/><text id="prepareSymbol" class="gateText" x="153" y="87">H</text><text class="gateCaption" x="153" y="155">PREPARE</text><text class="gateTick" x="179" y="39">✓</text></g>
           <g class="circuitGate future" data-circuit-kind="oracle"><rect class="gateBox" x="231" y="23" width="82" height="114" rx="9"/><text class="gateText" x="272" y="87">Oω</text><text class="gateCaption" x="272" y="155">ORACLE</text><text class="gateTick" x="298" y="39">✓</text></g>
           <g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text id="inverseSymbol" class="gateText" x="408" y="87">H</text><text class="gateCaption" x="408" y="155">MIX 1/3</text><text class="gateTick" x="434" y="39">✓</text></g>
-          <g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">Rᵢ</text><text class="gateCaption" x="527" y="155">REFLECT 2/3</text><text class="gateTick" x="553" y="39">✓</text></g>
+          <g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">Sᵢ</text><text class="gateCaption" x="527" y="155">FLIP INITIAL</text><text class="gateTick" x="553" y="39">✓</text></g>
           <g class="circuitGate future" data-circuit-kind="forward"><rect class="gateBox" x="605" y="23" width="82" height="114" rx="9"/><text id="forwardSymbol" class="gateText" x="646" y="87">H</text><text class="gateCaption" x="646" y="155">MIX 3/3</text><text class="gateTick" x="672" y="39">✓</text></g>
-          <path class="diffuserBrace" d="M355 166v6h344v-6"/><text id="diffuserLabel" class="diffuserLabel" x="527" y="186">DIFFUSER = H Rᵢ H</text>
+          <path class="diffuserBrace" d="M355 166v6h344v-6"/><text id="diffuserLabel" class="diffuserLabel" x="527" y="186">DIFFUSER = H Sᵢ H</text>
           <g id="circuitReadout" class="readoutNode"><circle cx="777" cy="80" r="33"/><path d="M756 89a24 24 0 0 1 42 0M777 86l15-18"/><text x="777" y="155">ANSWER</text></g>
         </svg>
         <div id="circuitMeta"><span id="circuitTarget">w = |1111⟩</span><span id="circuitStatus">0 / 13 operations</span></div>
@@ -82,11 +82,11 @@
       <div id="inspectState" class="stateInspector">Hover a column to inspect its amplitude.</div>
       <div id="phaseLegend" class="amplitudeLegend"><b>Amplitude phase</b><div class="phaseGradient"></div><div class="phaseTicks"><span>−π</span><span>−π/2</span><span>0</span><span>π/2</span><span>π</span></div></div>
       <details class="theory" open><summary>Reading signed amplitudes</summary><p>The oracle changes the sign of the marked amplitude only. Hadamard interference can also make unmarked amplitudes negative inside the diffuser. Those signs are part of the circuit calculation.</p><p>Gate checkpoints show exact Grover states. Between checkpoints, a norm-preserving animation rotates amplitudes through the complex plane. This animation is a display choice; Grover specifies the gate endpoints, not a physical path between them.</p><p>The 2×2 and 4×4 gate endpoints are real. The odd grids can have complex amplitudes even at checkpoints. A zero real column can have nonzero probability: choose <b>Imaginary amplitude</b> to inspect its other component.</p></details>
-      <details class="theory"><summary>Gates and phase convention</summary><p id="theoryMixer">H is the tensor-product qubit Hadamard: H† = H.</p><p>The three diffuser steps are H, Rᵢ, H, where Rᵢ = 2|i⟩⟨i| − I. Rᵢ keeps the initial-state component and reverses all others. It equals an initial-only sign flip multiplied by an overall −1.</p><p>For |sᵢ⟩ = H|i⟩, the completed diffuser is D = 2|sᵢ⟩⟨sᵢ| − I. With the all-zero input, this gives the familiar inversion about the mean: a → 2 × mean − a. There is no extra whole-state sign reversal after each round.</p><p>Signs are never hidden or replaced by absolute values. Even with this convention, unmarked amplitudes can become negative near the optimal stopping point: for 16 states, the third round gives −0.05078125 in each unmarked state and +0.98046875 in the marked state, starting from the all-zero input.</p></details>
+      <details class="theory"><summary>Gates and phase convention</summary><p id="theoryMixer">H is the tensor-product qubit Hadamard: H† = H.</p><p>The three diffuser steps are H, Sᵢ, H, where Sᵢ = I − 2|i⟩⟨i|. The middle step flips only the initial-state amplitude. Every other amplitude remains fixed throughout this step.</p><p>For |sᵢ⟩ = H|i⟩, the completed diffuser is H Sᵢ H = I − 2|sᵢ⟩⟨sᵢ| = −D. This is Grover's inversion about the mean with an overall minus sign. It gives the same success probabilities, and the columns show that sign explicitly.</p><p>For the default 16-state example, the first Sᵢ step takes the initial column from +0.875 to −0.875. After the final H, the marked amplitude is −0.6875 and each unmarked amplitude is −0.1875. Nothing is replaced by an absolute value or silently rephased.</p></details>
     </section>
   </aside>
 </div>
-<script src="./recording.js?v=20261014-textbook"></script>
-<script type="module" src="./main.js?v=20261014-textbook"></script>
+<script src="./recording.js?v=20261014-initial-flip"></script>
+<script type="module" src="./main.js?v=20261014-initial-flip"></script>
 </body>
 </html>

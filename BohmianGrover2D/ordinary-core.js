@@ -14,7 +14,7 @@ export function gridModel(side = 4) {
     ...Array.from({length: iterations}, (_, i) => [
       {kind: 'oracle', name: 'Oracle · marked-state sign flip', symbol: 'Oω', iteration: i + 1, duration: 1.6},
       {kind: 'inverse', name: `${symbol} · diffuser 1/3`, symbol, iteration: i + 1, duration: 2.4},
-      {kind: 'reference', name: 'Reference reflection · diffuser 2/3', symbol: 'Rᵢ', iteration: i + 1, duration: 1.6},
+      {kind: 'reference', name: 'Initial-state sign flip · diffuser 2/3', symbol: 'Sᵢ', iteration: i + 1, duration: 1.6},
       {kind: 'forward', name: `${symbol} · diffuser 3/3`, symbol, iteration: i + 1, duration: 2.4},
     ]).flat(),
   ].map(Object.freeze));
@@ -67,10 +67,11 @@ export function oracle(state, target) {
   return state.map((value, k) => Math.floor(k / 2) === target ? -value : value);
 }
 
-export function referenceReflection(state, initial = 0) {
-  // R_i = 2|i><i| - I. Thus H R_i H = 2|s_i><s_i| - I exactly,
-  // with no extra global minus sign. R_i is -S_i, not S_i.
-  return state.map((value, k) => Math.floor(k / 2) === initial ? value : -value);
+export function referenceFlip(state, initial = 0) {
+  // S_i = I - 2|i><i|: flip only the initial-state amplitude.
+  // H S_i H = I - 2|s_i><s_i| = -D. Keep this global sign visible;
+  // Grover probabilities are identical to the inversion-about-mean convention.
+  return state.map((value, k) => Math.floor(k / 2) === initial ? -value : value);
 }
 
 // A display choice between exact gate endpoints, not extra Grover operations.
@@ -95,7 +96,7 @@ export function evolveGate(state, kind, progress, target, initial = 0) {
   let end;
   if (['prepare', 'inverse', 'forward'].includes(kind)) end = hadamard(state);
   else if (kind === 'oracle') end = oracle(state, target);
-  else if (kind === 'reference') end = referenceReflection(state, initial);
+  else if (kind === 'reference') end = referenceFlip(state, initial);
   else throw new Error(`Unknown gate: ${kind}`);
   return animateReflection(state, end, progress);
 }
