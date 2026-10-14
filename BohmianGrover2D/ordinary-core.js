@@ -15,7 +15,7 @@ export function gridModel(side = 4) {
       {kind: 'oracle', name: 'Oracle · marked-state sign flip', symbol: 'Oω', iteration: i + 1, duration: 1.6},
       {kind: 'inverse', name: `${symbol} · diffuser 1/3`, symbol, iteration: i + 1, duration: 2.4},
       {kind: 'reference', name: 'Initial-state sign flip · diffuser 2/3', symbol: 'Sᵢ', iteration: i + 1, duration: 1.6},
-      {kind: 'forward', name: `−${symbol} · diffuser 3/3`, symbol: `−${symbol}`, iteration: i + 1, duration: 2.4},
+      {kind: 'forward', name: `${symbol} · diffuser 3/3`, symbol, iteration: i + 1, duration: 2.4},
     ]).flat(),
   ].map(Object.freeze));
   const model = Object.freeze({side, stateCount, iterations, labels, gates, mixTime: 2.4, inverseTime: 2.4});
@@ -69,16 +69,16 @@ export function oracle(state, target) {
 
 export function referenceFlip(state, initial = 0) {
   // S_i = I - 2|i><i|: flip only the initial-state amplitude.
-  // H S_i H = -D. The final mixer includes an explicit common phase of -1,
-  // so (-H) S_i H = D while this middle step still flips only the initial state.
+  // H S_i H = I - 2|s_i><s_i| = -D. Keep this global sign visible;
+  // Grover probabilities are identical to the inversion-about-mean convention.
   return state.map((value, k) => Math.floor(k / 2) === initial ? -value : value);
 }
 
 // A display choice between exact gate endpoints, not extra Grover operations.
 // For a Hermitian reflection G, rotate its -1 eigenspace through exp(-i*pi*p):
 // U(p) = (I+G)/2 + exp(-i*pi*p)(I-G)/2. This keeps total probability at 1.
-// The underlying H uses the same path wherever it occurs. The final -H also
-// includes the common phase below. Endpoints use the exact matrices.
+// Both occurrences of H use precisely this same path; there is no inverse-time
+// animation inherited from a spatial model. Endpoints use the exact matrices.
 function animateReflection(state, reflected, p) {
   if (p <= 0) return Float64Array.from(state);
   if (p >= 1) return reflected;
@@ -92,27 +92,13 @@ function animateReflection(state, reflected, p) {
   return out;
 }
 
-function animateCommonPhase(state, p) {
-  if (p <= 0) return state;
-  if (p >= 1) return state.map(value => -value);
-  // exp(+i*pi*p) changes only the common phase, preserving every probability
-  // throughout the final mixer and reaching -H continuously at its checkpoint.
-  const out = new Float64Array(state.length), c = Math.cos(Math.PI * p), s = Math.sin(Math.PI * p);
-  for (let r = 0; r < state.length; r += 2) {
-    out[r] = c * state[r] - s * state[r + 1];
-    out[r + 1] = s * state[r] + c * state[r + 1];
-  }
-  return out;
-}
-
 export function evolveGate(state, kind, progress, target, initial = 0) {
   let end;
   if (['prepare', 'inverse', 'forward'].includes(kind)) end = hadamard(state);
   else if (kind === 'oracle') end = oracle(state, target);
   else if (kind === 'reference') end = referenceFlip(state, initial);
   else throw new Error(`Unknown gate: ${kind}`);
-  const animated = animateReflection(state, end, progress);
-  return kind === 'forward' ? animateCommonPhase(animated, progress) : animated;
+  return animateReflection(state, end, progress);
 }
 
 export function probabilities(state) {

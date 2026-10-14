@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-phase-corrected`.
+All active page assets and module imports use `?v=20261014-initial-flip`.
 
 ## Sequence
 
@@ -42,16 +42,14 @@ All active page assets and module imports use `?v=20261014-phase-corrected`.
 3. Apply the oracle `Oω`, flipping only the marked amplitude's phase.
 4. Apply `H`, the same Hadamard, since `H† = H`.
 5. Apply `Sᵢ = I − 2|i⟩⟨i|`, flipping only the initial-state amplitude.
-6. Apply `−H`: the same Hadamard with a common phase of −1, completing one
-   amplification round. Repeat steps 3–6.
+6. Apply `H` again, completing one amplification round. Repeat steps 3–6.
 
-The diffuser is `D = (−H) Sᵢ H = 2|sᵢ⟩⟨sᵢ| − I`, where `|sᵢ⟩ = H|i⟩`.
-The middle operation visibly flips only the initial column: every other
-amplitude stays fixed throughout that operation. Bare `H Sᵢ H` would give `−D`;
-the final mixer includes the compensating common phase explicitly as `−H`.
-For the all-zero input, the full diffuser acts as `a → 2 × mean − a`.
-This common phase changes no probability, and the completed round now uses
-the usual inversion-about-the-mean sign convention. See the
+The diffuser is `H Sᵢ H = I − 2|sᵢ⟩⟨sᵢ| = −D`, where `|sᵢ⟩ = H|i⟩`.
+It equals the usual Grover diffuser with an overall minus sign. This convention
+lets the middle operation visibly flip only the initial column: every other
+amplitude stays fixed throughout that operation. For the all-zero input, the
+full diffuser acts as `a → a − 2 × mean`. The overall sign changes no probability
+and is displayed explicitly, with no hidden phase correction. See the
 [Grover operator definition in IBM's documentation](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.grover_operator).
 
 The display shows every actual sign, including negative unmarked amplitudes
@@ -59,10 +57,10 @@ inside the diffuser. For 4×4 with initial `0000` and marked `1111`, the first
 post-oracle H gives +0.875 in `0000` and ±0.125 in the other states. These are
 ordinary Hadamard interference, independent of any wave model. The next Sᵢ
 flips the initial amplitude from +0.875 to −0.875 and keeps all others fixed.
-After the full first diffuser, the marked amplitude is +0.6875 and every
-unmarked amplitude is +0.1875. After round 3 they are +0.98046875 and −0.05078125
-respectively. These later negative unmarked amplitudes are genuine Grover
-overshoot and remain visible.
+After the full first diffuser, the marked amplitude is −0.6875 and every
+unmarked amplitude is −0.1875. After round 3 they are −0.98046875 and +0.05078125
+respectively. The displayed amplitudes differ from the positive-D convention
+by the common factor `(-1)^round` at complete rounds.
 
 Preparation runs once;
 the remaining four operations repeat 1, 2, 3, or 3 times for 2×2, 3×3, 4×4,
@@ -73,7 +71,6 @@ On 2×2 and 4×4, `H` is the usual tensor-product qubit Hadamard. The 3×3 and
 5×5 options use a Hermitian complex balanced mixer,
 `B[(x,y),(u,v)] = exp(2πi(xv−yu)/N)/N`, labelled **B** to distinguish these
 non-qubit grids as generalized amplitude amplification. `B† = B` and `B² = I`.
-The final diffuser step uses `−B`, with the same common phase convention.
 Every basis input prepares equal
 probabilities; nonzero initial coordinates can produce different phases.
 
@@ -82,12 +79,9 @@ Labels are binary for 2×2/4×4 and `|x,y⟩` for odd grids. The state index is
 gate endpoints is a display choice, not a physical simulation or additional
 Grover steps. For any reflection gate G, it uses
 `U(p) = (I+G)/2 + exp(−iπp)(I−G)/2` for progress p from 0 to 1. This preserves
-normalization and uses the exact gate matrix at the endpoint. Preparation and
-the first diffuser H use this same animation. The final `−H` uses
-`exp(+iπp) U_H(p)`: its common phase changes continuously from +1 to −1,
-preserving the probability of every state throughout the original H animation.
-The endpoint is exactly `−H`, without a phase jump at the checkpoint. Complex
-values during the animation are not required intermediate states of the discrete algorithm.
+normalization and uses the exact gate matrix at the endpoint. All H operations
+use the same animation, including the first step of the diffuser. Complex values
+during the animation are not required intermediate states of the discrete algorithm.
 
 ## Controls
 
@@ -148,10 +142,9 @@ and the recording clock. The page is left at the 4×4 oracle checkpoint. The
 `data-status="passed"` attribute on success.
 
 `tests/ordinary-core.test.mjs` checks the qubit mixer against an independent dense
-Walsh matrix, all intermediate 4×4 signs, the final mixer's continuous common
-phase and unchanged probability path, the exact diffuser against inversion
-about the mean, complex reflection identities, and Grover amplitudes and probabilities
-for every initial/marked pair on all four grids.
+Walsh matrix, all intermediate 4×4 signs, the exact diffuser against minus
+inversion about the mean, complex reflection identities, and Grover probabilities for
+every initial/marked pair on all four grids.
 
 The inherited physics modules and their numerical tests remain available as
 reference, but the histogram page does not load their core, renderers, or shaders.
