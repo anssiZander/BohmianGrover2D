@@ -1,9 +1,11 @@
 import { SearchSimulation, expectedProbability, probabilities,
-  sineCoefficients, boxProbability } from './multiregion-core.js?v=20261014-grids2';
-import { createGroverGeometry } from './grover-geometry.js?v=20261014-grids2';
-import { FlowRenderer } from './flow-renderer.js?v=20261014-grids2';
+  sineCoefficients, boxProbability } from './multiregion-core.js?v=20261014-particles';
+import { createGroverGeometry } from './grover-geometry.js?v=20261014-particles';
+import { FlowRenderer } from './flow-renderer.js?v=20261014-particles';
 
 const GRID = 512;
+const PARTICLE_COUNT_MIN = 1000, PARTICLE_COUNT_MAX = 100000;
+const PARTICLE_COUNT_LOG_RANGE = Math.log(PARTICLE_COUNT_MAX / PARTICLE_COUNT_MIN);
 const simulation = new SearchSimulation(15);
 const params = { speed: 1, visGain: .65, visGamma: .55, showPhase: true, showGrid: true, showMarkers: true,
   showCurrent: true, showParticles: true, showTrails: true, particleCount: 4000,
@@ -83,10 +85,24 @@ function reset() { simulation.reset(); selectionStep = 'initial'; flow?.reset(pa
 function startNext() { if (simulation.startNext()) { selectionStep = 'ready'; markChanged(); syncUi(); layout(); return true; } return false; }
 function runFull() { if (simulation.runFull()) { selectionStep = 'ready'; flow?.reset(params.particleCount,simulation.initial,simulation.model.side); markChanged(); syncUi(); layout(); return true; } return false; }
 function togglePause() { simulation.paused = !simulation.paused; lastUiKey = ''; syncUi(); }
-function setParticleCount(value) {
+function particleCountFromSlider() {
+  // Equal thumb distances multiply the count; round to 100 for readable steps.
+  return 100 * Math.round(PARTICLE_COUNT_MIN * Math.exp(
+    PARTICLE_COUNT_LOG_RANGE * Number(dom.particleCount.value) / 1000) / 100);
+}
+function showParticleCount(count) {
+  const label = count.toLocaleString();
+  dom.particleCountValue.textContent = label;
+  dom.particleCount.setAttribute('aria-valuetext', label + ' particles');
+}
+function syncParticleCountSlider(position = 1000 * Math.log(params.particleCount / PARTICLE_COUNT_MIN) / PARTICLE_COUNT_LOG_RANGE) {
+  dom.particleCount.value = position;
+  showParticleCount(params.particleCount);
+}
+function setParticleCount(value, sliderPosition) {
   if (simulation.active) return false;
-  params.particleCount = Math.max(256, Math.min(16000, Math.round(Number(value) || 4000)));
-  dom.particleCount.value = params.particleCount; dom.particleCountValue.textContent = params.particleCount.toLocaleString();
+  params.particleCount = Math.max(256, Math.min(PARTICLE_COUNT_MAX, Math.round(Number(value) || 4000)));
+  syncParticleCountSlider(sliderPosition);
   reset(); return true;
 }
 
@@ -197,6 +213,7 @@ function syncUi() {
 }
 
 function installEvents() {
+  syncParticleCountSlider();
   dom.gridSize.addEventListener('input', () => setGridSize(dom.gridSize.value));
   dom.selectionBack.addEventListener('click', () => setSelectionStep('initial'));
   dom.selectionNext.addEventListener('click', () => setSelectionStep({ initial: 'goal', goal: 'ready', ready: 'initial' }[selectionStep]));
@@ -237,7 +254,11 @@ function installEvents() {
     params.trailHalfLife = Number(dom.trailHalfLife.value);
     dom.trailHalfLifeValue.textContent = `${params.trailHalfLife.toFixed(1)} s`;
   });
-  dom.particleCount.addEventListener('change', () => setParticleCount(dom.particleCount.value));
+  dom.particleCount.addEventListener('input', () => showParticleCount(particleCountFromSlider()));
+  dom.particleCount.addEventListener('change', () => {
+    const count = particleCountFromSlider();
+    if (count !== params.particleCount) setParticleCount(count, dom.particleCount.value);
+  });
   dom.minui.addEventListener('click', () => {
     dom.uibody.hidden = !dom.uibody.hidden; dom.minui.textContent = dom.uibody.hidden ? '+' : '−';
     dom.minui.setAttribute('aria-expanded', String(!dom.uibody.hidden));

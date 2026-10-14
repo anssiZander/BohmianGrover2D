@@ -71,7 +71,9 @@ hard refresh (Ctrl+Shift+R) retrieves the new page if an existing tab is stale.
   independently. Hidden particles continue evolving. The arrows display current
   strength on a compressed scale; particles move at current divided by density.
 - **Flow settings** adjusts arrow density/gain, dot size, trail length, and particle count.
-  Changing the count resets the search and is locked during a running gate.
+  The particle slider is logarithmic from 1,000 to 100,000 (default 4,000). Its
+  count updates while dragging; releasing it resets the search with that count.
+  Changing the count is locked during a running gate.
 - **Trail length** sets the fading half-life (0.1–12 gate-time seconds, default
   1.5). It can change during a gate without resetting the wave, particles, or
   existing history. Faster playback advances trail fading on the same clock.

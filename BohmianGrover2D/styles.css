@@ -48,3 +48,5 @@ button:hover:not(:disabled){background:rgba(86,150,232,.25);border-color:#5e9ed0
 @media(max-width:650px){#waveHeader{grid-template-columns:minmax(125px,.8fr) minmax(0,1.2fr);gap:5px 9px}#selectionGuide{grid-template-columns:1fr}#selectionTitle{grid-column:1;grid-row:1}#selectionHint{grid-column:1;grid-row:2;font-size:10px}.selectionActions{grid-column:1;grid-row:3;justify-content:flex-start}}
 
 @media(max-width:650px){#stage{height:calc(100vw + 250px)}}
+
+#particleCountValue{flex-basis:56px}

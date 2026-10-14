@@ -1,4 +1,4 @@
-import { GATES,boxProbability } from '../multiregion-core.js';
+import { GATES,gridModel,boxProbability } from '../multiregion-core.js';
 import { gateFlow,flowAt } from '../probability-flow.js';
 
 const panel=document.createElement('pre');panel.id='flowVerification';
@@ -16,12 +16,27 @@ const maxDiff=(a,b)=>a.reduce((m,v,i)=>Math.max(m,Math.abs(v-b[i])),0);
 async function run() {
   for(let i=0;!window.GroverMultiRegion?.isReady();i++) {if(i>2500)throw Error('Startup timeout');await turn();}
   const api=window.GroverMultiRegion;api.beginFrameRecording();api.setParticleCount(4000);
+  const slider = document.getElementById('particleCount');
+  const label = document.getElementById('particleCountValue');
+  check('Default particle count is 4,000', api.particleStats().count === 4000 && label.textContent === (4000).toLocaleString());
+  for (const [position, count] of [[0, 1000], [500, 10000], [1000, 100000]]) {
+    slider.value = position; slider.dispatchEvent(new Event('input'));
+    check('Logarithmic particle slider at ' + position, label.textContent === count.toLocaleString() && slider.getAttribute('aria-valuetext') === count.toLocaleString() + ' particles');
+    check('Dragging previews the count without reallocating particles', api.particleStats().count === 4000);
+  }
+  slider.value = 1; slider.dispatchEvent(new Event('change'));
+  check('Rounded counts preserve the slider position for keyboard steps', slider.value === '1' && api.particleStats().count === 1000);
+  slider.value = 2; slider.dispatchEvent(new Event('input')); slider.dispatchEvent(new Event('change'));
+  check('Small keyboard steps can accumulate through a rounded count', slider.value === '2' && api.particleStats().count === 1000);
+  slider.value = 500; slider.dispatchEvent(new Event('change'));
+  check('Releasing the slider commits 10,000 particles and resets the search', api.particleStats().count === 10000 && api.state().time === 0 && api.state().completed === 0);
+  api.setParticleCount(4000);
   document.getElementById('trailsToggle').click();
   async function advance(seconds) {
     let left=seconds;while(left>1e-10){const step=Math.min(.08,left);api.advanceTime(step);left-=step;await turn();}
   }
   function distribution(name,full=false) {
-    const state=api.state(),stats=api.particleStats(),expected=Array.from({length:16},(_,q)=>boxProbability(state.amplitudes,q));
+    const state=api.state(),stats=api.particleStats(),expected=Array.from({length:state.side*state.side},(_,q)=>boxProbability(state.amplitudes,q));
     const error=Math.max(...stats.bins.map((n,q)=>Math.abs(n/stats.count-expected[q])));
     maxRegionError=Math.max(maxRegionError,error);maxLag=Math.max(maxLag,stats.maxLag);
     maxFailures=Math.max(maxFailures,stats.failures);maxInvalid=Math.max(maxInvalid,stats.invalid);
@@ -73,9 +88,12 @@ async function run() {
     await advance(2.4);
     for(let round=1;round<=3;round++) {await advance(8);distribution(`Target ${target}, iteration ${round}`);}
   }
-  api.setParticleCount(16000);api.setInitial(15);api.setTarget(15);api.runFull();await advance(26.4);
-  distribution('Maximum particle count, complete target 15',true);
-  api.setParticleCount(4000);
+  api.setGridSize(5);api.setInitial(24);api.setTarget(24);
+  slider.value = 1000; slider.dispatchEvent(new Event('input')); slider.dispatchEvent(new Event('change'));
+  api.runFull();await advance(gridModel(5).gates.reduce((sum,g)=>sum+g.duration,0));
+  check('Maximum ensemble uses 100,000 particles', api.particleStats().count === 100000);
+  distribution('5x5 maximum particle count, complete target 24',true);
+  api.setParticleCount(4000);api.setGridSize(4);
   api.reset();api.startNext();await advance(.6);const visible=api.readParticles();
   api.reset();document.getElementById('particlesToggle').click();document.getElementById('currentToggle').click();
   api.startNext();await advance(.6);

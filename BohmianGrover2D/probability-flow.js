@@ -1,4 +1,4 @@
-import { SIDE, gridModel, modelOfState, hadamard, sineCoefficients } from './multiregion-core.js?v=20261014-grids2';
+import { SIDE, gridModel, modelOfState, hadamard, sineCoefficients } from './multiregion-core.js?v=20261014-particles';
 
 // Products of N sine modes contain only cosine frequencies 0..2N.
 // Solve the Neumann Poisson equation spectrally, with zero constant potential.

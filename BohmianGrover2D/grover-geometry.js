@@ -1,4 +1,4 @@
-import { modelOfState, expectedProbability, evolveGate, projectGroverState } from './multiregion-core.js?v=20261014-grids2';
+import { modelOfState, expectedProbability, evolveGate, projectGroverState } from './multiregion-core.js?v=20261014-particles';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 const gateNames = { input: 'Input', prepare: 'Prepare H', oracle: 'Oracle Oω', inverse: 'Inverse H†', reference: 'Reference Sᵢ', forward: 'Forward H' };
