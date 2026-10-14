@@ -230,3 +230,61 @@ test('direct combined stepping and autoplay retain the signed endpoints for all 
     }
   }
 });
+
+test('previous step restores every exact signed checkpoint and supports replay in both mixer modes',()=>{
+  for(const side of [2,3,4,5]) for(const combine of [false,true]) for(const [initial,target] of [[0,side*side-1],[side*side-2,1],[side*side-1,side*side-1]]) {
+    const sim=new SearchSimulation(target,initial,side);sim.setCombineMixer(combine);
+    assert.equal(sim.previousStep(),false);
+    const states=[sim.snapshot()];
+    while(sim.startNext()) {sim.advance(100);states.push(sim.snapshot());}
+    const final=sim.snapshot();
+    for(let step=states.length-2;step>=0;step--) {
+      assert.ok(sim.previousStep());const actual=sim.snapshot(), expected=states[step];
+      assert.deepEqual(actual.amplitudes,expected.amplitudes,'restore the exact complex state, including signs');
+      assert.deepEqual(actual.checkpoints,expected.checkpoints,'discard future iteration history');
+      assert.equal(actual.completed,expected.completed);assert.equal(actual.completedOperations,expected.completedOperations);
+      assert.equal(actual.kind,expected.kind);assert.equal(actual.iteration,expected.iteration);
+      assert.equal(actual.combineMixer,combine);assert.equal(actual.initial,initial);assert.equal(actual.target,target);
+      assert.equal(actual.busy,false);assert.equal(actual.paused,false);assert.equal(sim.autoplay,false);
+      close(actual.time,expected.time,'restore checkpoint animation time');
+    }
+    assert.equal(sim.previousStep(),false,'cannot move before the input state');
+    while(sim.startNext()) sim.advance(100);
+    assert.deepEqual(sim.snapshot().amplitudes,final.amplitudes,'replaying reaches exactly the same final state');
+    assert.deepEqual(sim.checkpoints,final.checkpoints);
+  }
+});
+
+test('previous step cancels running, paused and autoplay operations at their starting checkpoint',()=>{
+  for(const combine of [false,true]) {
+    const sim=new SearchSimulation(15,0,4);sim.setCombineMixer(combine);
+    while(sim.completed<sim.model.gates.length) {
+      const before=sim.snapshot();sim.startNext();sim.advance(sim.active.duration/2);sim.paused=true;
+      assert.ok(sim.previousStep());const after=sim.snapshot();
+      assert.deepEqual(after.amplitudes,before.amplitudes);assert.deepEqual(after.checkpoints,before.checkpoints);
+      assert.equal(after.completed,before.completed);assert.equal(after.busy,false);assert.equal(after.paused,false);
+      close(after.time,before.time);
+      sim.startNext();sim.advance(100);
+    }
+    sim.runFull();sim.advance(4.6);
+    assert.ok(sim.active && sim.autoplay);assert.ok(sim.previousStep());
+    assert.equal(sim.completed,2);assert.equal(sim.active,null);assert.equal(sim.autoplay,false);
+    const restored=sim.snapshot();sim.advance(1000);
+    assert.deepEqual(sim.snapshot(),restored,'rewinding stops autoplay completely');
+  }
+});
+
+test('previous step follows the selected mixer mode after switching modes',()=>{
+  const sim=new SearchSimulation(15,0,4);
+  for(let step=0;step<5;step++) {sim.startNext();sim.advance(100);}
+  const mixed=Array.from(sim.amplitudes);
+  sim.setCombineMixer(true);assert.ok(sim.previousStep());
+  assert.equal(sim.completed,2,'combined mode goes back across all three mixer gates');
+  sim.amplitudes.filter((_,k)=>k%2===0).forEach((value,q)=>close(value,q===15?-.25:.25));
+  sim.startNext();sim.advance(100);assert.deepEqual(Array.from(sim.amplitudes),mixed);
+  sim.setCombineMixer(false);assert.ok(sim.previousStep());
+  assert.equal(sim.completed,4,'separate mode revisits the initial-state flip checkpoint');
+  close(sim.amplitudes[0],-.875);assert.equal(sim.last.kind,'reference');
+  assert.equal(sim.checkpoints.some(item=>['forward','mixer'].includes(item.kind)),false);
+  sim.startNext();sim.advance(100);assert.deepEqual(Array.from(sim.amplitudes),mixed);
+});

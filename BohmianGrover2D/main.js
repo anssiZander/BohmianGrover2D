@@ -1,10 +1,10 @@
-import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-direct-mixer';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-direct-mixer';
+import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-previous-step';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-previous-step';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
 const dom = Object.fromEntries(['gridSize', 'gridSizeValue', 'gridSummary', 'stateCountLabel', 'appTitle', 'minui', 'uibody',
-  'initialState', 'targetState', 'selectInitial', 'selectTarget', 'selectionHint', 'next', 'full',
+  'initialState', 'targetState', 'selectInitial', 'selectTarget', 'selectionHint', 'previous', 'next', 'full',
   'pause', 'reset', 'gateProgress', 'progressBar', 'stageStatus', 'speed', 'speedValue',
   'phaseColors', 'valueLabels', 'phaseLegend', 'columnView', 'columnHelp', 'heightLegend', 'c', 'plotArea', 'plotBadge', 'error',
   'markedLabel', 'markedProbability', 'orbitLeft', 'orbitRight', 'zoomOut', 'zoomIn', 'topView',
@@ -76,6 +76,10 @@ function choose(which, q) {
   selection = null; refresh(); return true;
 }
 function reset() { simulation.reset(); selection = null; refresh(); }
+function previousStep() {
+  if (!simulation.previousStep()) return false;
+  selection = null; refresh(); return true;
+}
 function setCombineMixer(value) {
   if (!simulation.setCombineMixer(value)) return false;
   buildGridUI(); refresh(); return true;
@@ -133,6 +137,8 @@ function syncUI(state) {
   dom.c.classList.toggle('picking',!!selection);
   text(dom.selectionHint, state.busy ? 'Selection is locked during the operation. Drag to orbit.' : selection ? 'Click a column or square. Drag still orbits the camera.' : 'Use the selectors or pick a square. Drag to orbit.');
   dom.next.disabled = state.busy || !next || !ready; dom.full.disabled = state.busy || !ready;
+  dom.previous.disabled = !ready || (!state.busy && state.completed === 0);
+  dom.previous.title = state.busy ? 'Return to the start of this operation.' : 'Return to the previous checkpoint.';
   dom.pause.disabled = !state.busy; text(dom.pause,state.paused ? 'Resume' : 'Pause');
   dom.combineMixer.disabled = !state.canCombineMixer;
   dom.combineMixer.setAttribute('aria-pressed',state.combineMixer);
@@ -194,6 +200,7 @@ dom.targetState.addEventListener('change',()=>choose('target',dom.targetState.va
 dom.selectInitial.addEventListener('click',()=>setSelection('initial'));
 dom.selectTarget.addEventListener('click',()=>setSelection('target'));
 dom.next.addEventListener('click',startNext); dom.full.addEventListener('click',runFull);
+dom.previous.addEventListener('click',previousStep);
 dom.reset.addEventListener('click',reset); dom.pause.addEventListener('click',togglePause);
 dom.combineMixer.addEventListener('click',()=>setCombineMixer(!simulation.combineMixer));
 dom.speed.addEventListener('input',()=>setSpeed(dom.speed.value));
@@ -216,7 +223,7 @@ window.addEventListener('keydown',event=>{
 const api = {
   isReady:()=>ready && !renderer?.lost,
   state:()=>simulation.snapshot(), reset, setInitial:q=>choose('initial',q), setTarget:q=>choose('target',q),
-  setGridSize, setCombineMixer, startNext, runFull, togglePause, setSpeed, setColumnView, advanceTime:advance,
+  setGridSize, setCombineMixer, previousStep, startNext, runFull, togglePause, setSpeed, setColumnView, advanceTime:advance,
   cameraState:()=>({...renderer.view}),
   setCamera:view=>{ renderer.setView(view); refresh(); return {...renderer.view}; },
   resetCamera:()=>{ renderer.resetView(); refresh(); },

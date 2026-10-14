@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-direct-mixer`.
+All active page assets and module imports use `?v=20261014-previous-step`.
 
 ## Sequence
 
@@ -100,6 +100,11 @@ Complex values during the animation are not required intermediate states of the 
   mixer (or reset) before switching. The setting persists through reset and grid changes.
 - **Apply next operation** animates one operation and stops at its checkpoint.
   **Run full search** starts again from the selected input and runs all gates.
+- **Previous step**, beside the next-operation button, restores the preceding
+  checkpoint with its exact signed amplitudes and updates the circuit and iteration
+  history. In combined mode, the whole mixer counts as one step. During a running
+  or paused operation, it cancels that operation and returns to its starting
+  checkpoint. It stops autoplay and keeps the selected states, mixer mode and camera.
 - **Pause/Resume**, **Reset**, and animation speed control the same clock.
   Space pauses/resumes; R resets when an input or button does not have focus.
   Reset keeps the chosen input, marked state, and camera orientation.

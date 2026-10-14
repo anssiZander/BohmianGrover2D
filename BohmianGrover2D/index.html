@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Ordinary Grover · 4×4</title>
   <link rel="icon" href="data:,"/>
-  <link rel="stylesheet" href="./styles.css?v=20261014-direct-mixer"/>
+  <link rel="stylesheet" href="./styles.css?v=20261014-previous-step"/>
 </head>
 <body>
 <div id="wrap">
@@ -16,7 +16,7 @@
       <div class="row"><label for="gridSize">Grid size</label><input id="gridSize" type="range" min="2" max="5" step="1" value="4" aria-describedby="gridSummary"/><span id="gridSizeValue" class="val">4×4</span></div>
       <p id="gridSummary" class="note">16 basis states. Changing size resets the search.</p>
       <div class="section">Gates</div>
-      <div class="ops"><button id="next" type="button">Apply H · prepare</button><button id="full" type="button" class="full">Run full search</button></div>
+      <div class="ops"><button id="previous" type="button" disabled>Previous step</button><button id="next" type="button">Apply H · prepare</button><button id="full" type="button" class="full">Run full search</button></div>
       <div id="gateProgress" role="progressbar" aria-label="Current operation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progressBar"></div></div>
       <div id="stageStatus" class="status" role="status">Ready to prepare</div>
       <div class="section">Playback &amp; columns</div>
@@ -90,7 +90,7 @@
     </section>
   </aside>
 </div>
-<script src="./recording.js?v=20261014-direct-mixer"></script>
-<script type="module" src="./main.js?v=20261014-direct-mixer"></script>
+<script src="./recording.js?v=20261014-previous-step"></script>
+<script type="module" src="./main.js?v=20261014-previous-step"></script>
 </body>
 </html>

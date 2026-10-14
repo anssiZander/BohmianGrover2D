@@ -144,6 +144,18 @@ export class SearchSimulation {
     if (this.active || !Number.isInteger(initial) || initial < 0 || initial >= this.model.stateCount) return false;
     this.initial = initial; this.reset(); return true;
   }
+  previousStep() {
+    if (!this.active && this.completed === 0) return false;
+    let target = this.completed;
+    if (!this.active) target -= this.combineMixer && this.model.gates[target - 1].kind === 'forward' ? 3 : 1;
+    // Restore exact checkpoints in the selected mode. This also handles
+    // stepping inside a mixer that was previously completed in combined mode.
+    this.reset();
+    while (this.completed < target) {
+      this.startNext(); this.advance(this.active.duration);
+    }
+    return true;
+  }
   startNext() {
     if (this.active || this.completed >= this.model.gates.length) return false;
     const next = this.model.gates[this.completed];

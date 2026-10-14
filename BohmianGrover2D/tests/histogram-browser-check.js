@@ -192,6 +192,34 @@ try {
   const beforePinch=app.cameraState().zoom;pointer('pointerdown',150,150,1);pointer('pointerdown',220,150,2);pointer('pointermove',260,150,2);pointer('pointerup',260,150,2);pointer('pointerup',150,150,1);
   check(app.cameraState().zoom>beforePinch,'two-pointer pinch zoom');check(app.state().target===6,'pinch never selects a state');
 
+  for(const combine of [false,true]) {
+    app.reset();app.setCombineMixer(combine);app.setInitial(0);app.setTarget(15);
+    const cameraBeforeBack=app.cameraState(), states=[app.state()];
+    check(byId('previous').disabled,'Previous step is disabled at the input state');
+    while(app.startNext()) {app.advanceTime(100);states.push(app.state());}
+    const final=app.state();
+    for(let step=states.length-2;step>=0;step--) {
+      check(!byId('previous').disabled,'Previous step is available after an operation');
+      byId('previous').click();const actual=app.state(), expected=states[step];
+      vector(actual.amplitudes,expected.amplitudes,'Previous step restores the exact signed state');
+      vector(app.histogram().values,expected.amplitudes.filter((_,k)=>k%2===0),'rewound columns match restored amplitudes');
+      check(byId('circuitStatus').textContent===`${expected.completedOperations} / ${expected.totalOperations} operations`,'operation counter rewinds in the current mixer mode');
+      check(byId('iterationTrack').querySelectorAll('.complete').length===expected.checkpoints.filter(item=>['forward','mixer'].includes(item.kind)).length,'iteration history rewinds');
+      check(!byId('next').disabled && !byId('initialState').disabled,'forward stepping and state selection unlock after going back');
+      check(!byId('circuitReadout').classList.contains('complete'),'readout no longer shows the full search as complete');
+      check(JSON.stringify(app.cameraState())===JSON.stringify(cameraBeforeBack),'going back keeps the camera');
+      check(actual.combineMixer===combine && actual.initial===0 && actual.target===15,'going back keeps mode and selected states');
+    }
+    check(byId('previous').disabled && !app.previousStep(),'cannot step before the input');
+    while(app.startNext()) app.advanceTime(100);
+    vector(app.state().amplitudes,final.amplitudes,'forward replay after rewinding returns the same result');
+    app.runFull();app.advanceTime(4.6);byId('pause').click();
+    check(app.state().busy && app.state().paused && !byId('previous').disabled,'Previous step remains usable during a paused operation');
+    byId('previous').click();const restored=app.state();
+    check(!restored.busy && !restored.paused && restored.completed===2,'Previous step cancels the paused operation at its starting checkpoint');
+    app.advanceTime(1000);vector(app.state().amplitudes,restored.amplitudes,'going back stops autoplay');
+  }
+  app.reset();app.setCombineMixer(false);
   app.reset();app.startNext();app.advanceTime(.6);app.togglePause();app.setGridSize(5);
   check(!app.state().busy && !app.state().paused && app.state().completed===0,'size change resets an in-progress paused search');
   check(app.state().checkpoints.length===0,'size change clears history');
@@ -201,6 +229,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: direct combined mixer interpolation without intermediate gates, exact signed endpoints matching separate mode, Combine toggle placement and state preservation, normalized animation and continuous progress, separate-mode initial-only sign flip and Hadamard signs, explicit diffuser global sign, complex component views, phase-gate probabilities, step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}
