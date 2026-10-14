@@ -46,7 +46,7 @@ test('ordinary qubit H agrees with the dense textbook Walsh matrix on every basi
   }
 });
 
-test('each mixer is Hermitian and self-inverse, and both H steps use exactly the same animation',()=>{
+test('each mixer is Hermitian and self-inverse, and preparation and diffuser H use the same animation',()=>{
   for(const side of [2,3,4,5]) {
     const columns=Array.from({length:side*side},(_,q)=>hadamard(basisState(q,side)));
     for(let x=0;x<side*side;x++) for(let y=0;y<side*side;y++) {
@@ -58,8 +58,27 @@ test('each mixer is Hermitian and self-inverse, and both H steps use exactly the
     for(const p of [0,.13,.5,.82,1]) {
       const prepared=evolveGate(state,'prepare',p,0);
       assert.deepEqual(evolveGate(state,'inverse',p,0),prepared);
-      assert.deepEqual(evolveGate(state,'forward',p,0),prepared);
       close(normSquared(prepared),1,'animation norm');
+    }
+  }
+});
+
+test('the final -H adds only a continuous common phase, preserving the H probability path',()=>{
+  for(const side of [2,3,4,5]) {
+    const state=complexState(side), end=hadamard(state).map(value=>-value);
+    assert.deepEqual(evolveGate(state,'forward',0,0),state);
+    assert.deepEqual(evolveGate(state,'forward',1,0),end);
+    for(const p of [0,1e-8,.13,.5,.82,1-1e-8,1]) {
+      const ordinary=evolveGate(state,'inverse',p,0), corrected=evolveGate(state,'forward',p,0);
+      vector(probabilities(corrected),probabilities(ordinary),'common phase leaves each probability unchanged');
+      close(normSquared(corrected),1,'final mixer animation norm');
+      const c=Math.cos(Math.PI*p), s=Math.sin(Math.PI*p);
+      vector(corrected,ordinary.map((value,k)=>k%2
+        ? c*value+s*ordinary[k-1] : c*value-s*ordinary[k+1]),'common phase of exp(i pi p)');
+    }
+    for(const [p,endpoint] of [[1e-8,state],[1-1e-8,end]]) {
+      const near=evolveGate(state,'forward',p,0);
+      assert.ok(Math.hypot(...near.map((value,k)=>value-endpoint[k]))<4e-8,'no endpoint phase jump');
     }
   }
 });
@@ -71,7 +90,7 @@ test('the 4x4 checkpoint signs include the initial-only flip and genuine Hadamar
     Array.from({length:16},(_,q)=>q===15?-.25:.25),
     Array.from({length:16},(_,q)=>(q===0?1:0)-.125*(parity(q)?-1:1)),
     Array.from({length:16},(_,q)=>q===0?-.875:-.125*(parity(q)?-1:1)),
-    Array.from({length:16},(_,q)=>q===15?-.6875:-.1875),
+    Array.from({length:16},(_,q)=>q===15?.6875:.1875),
   ];
   for(const amplitudes of expected) {
     sim.startNext();sim.advance(10);
@@ -79,19 +98,21 @@ test('the 4x4 checkpoint signs include the initial-only flip and genuine Hadamar
     sim.amplitudes.filter((_,k)=>k%2===1).forEach(value=>assert.equal(Math.abs(value),0));
   }
   while(sim.startNext()) sim.advance(10);
-  sim.amplitudes.filter((_,k)=>k%2===0).forEach((value,q)=>close(value,q===15?-.98046875:.05078125,'round three sign'));
+  sim.amplitudes.filter((_,k)=>k%2===0).forEach((value,q)=>close(value,q===15?.98046875:-.05078125,'round three sign'));
 });
 
-test('H S_i H equals minus the usual diffuser for every initial state',()=>{
+test('the three displayed gates (-H) S_i H equal the usual diffuser for every initial state',()=>{
   for(const side of [2,3,4,5]) {
     const state=complexState(side);
     for(let initial=0;initial<side*side;initial++) {
       const prepared=hadamard(basisState(initial,side));
-      const actual=hadamard(referenceFlip(hadamard(state),initial));
-      vector(actual,reflectAbout(state,prepared).map(value=>-value),`diffuser ${side}/${initial}`);
+      const mixed=evolveGate(state,'inverse',1,0,initial);
+      const flipped=evolveGate(mixed,'reference',1,0,initial);
+      const actual=evolveGate(flipped,'forward',1,0,initial);
+      vector(actual,reflectAbout(state,prepared),`diffuser ${side}/${initial}`);
       if(initial===0) {
         const mean=[0,1].map(part=>state.filter((_,k)=>k%2===part).reduce((sum,v)=>sum+v,0)/(side*side));
-        vector(actual,state.map((value,k)=>value-2*mean[k%2]),'minus inversion about arithmetic mean');
+        vector(actual,state.map((value,k)=>2*mean[k%2]-value),'inversion about arithmetic mean');
       }
     }
   }
@@ -114,7 +135,7 @@ test('oracle and reference each flip only their selected state, leaving all othe
   }
 });
 
-test('all initial/marked pairs retain the Grover success curve with the explicit global sign per round',()=>{
+test('all initial/marked pairs follow the Grover success curve and the usual diffuser sign convention',()=>{
   for(const side of [2,3,4,5]) for(let initial=0;initial<side*side;initial++) {
     const prepared=hadamard(basisState(initial,side)), theta=Math.asin(1/side);
     for(let target=0;target<side*side;target++) {
@@ -127,7 +148,7 @@ test('all initial/marked pairs retain the Grover success curve with the explicit
         close(probabilities(sim.amplitudes)[target],Math.sin(angle)**2,'marked success');
         sim.amplitudes.forEach((value,k)=>{
           const q=Math.floor(k/2), factor=q===target ? side*Math.sin(angle) : side*Math.cos(angle)/Math.sqrt(side*side-1);
-          close(value,(-1)**gate.iteration*prepared[k]*factor,`amplitude orientation ${side}/${initial}/${target}/${gate.iteration}`);
+          close(value,prepared[k]*factor,`amplitude orientation ${side}/${initial}/${target}/${gate.iteration}`);
         });
       }
     }

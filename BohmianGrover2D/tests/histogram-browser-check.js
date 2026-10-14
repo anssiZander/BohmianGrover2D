@@ -33,7 +33,7 @@ try {
     close(app.state().probabilities[pair[0]],1,'selected initial has unit probability');
     check(app.state().iterations===expectedIterations,'correct stopping iteration');
     check(byId('prepareSymbol').textContent===(side%2?'B':'H'),'qubit versus odd-grid mixer labelled accurately');
-    check(byId('inverseSymbol').textContent===byId('prepareSymbol').textContent && byId('forwardSymbol').textContent===byId('prepareSymbol').textContent,'all mixer steps show the same self-inverse gate');
+    check(byId('inverseSymbol').textContent===byId('prepareSymbol').textContent && byId('forwardSymbol').textContent==='−'+byId('prepareSymbol').textContent,'self-inverse mixer and final common phase labelled explicitly');
     check(byId('diffuserLabel').textContent.includes('Sᵢ'),'initial-state flip shown explicitly');
     const kinds = ['prepare',...Array.from({length:expectedIterations},()=>['oracle','inverse','reference','forward']).flat()];
     for (const [index,kind] of kinds.entries()) {
@@ -97,8 +97,8 @@ try {
   close(app.histogram().values[0],-.875,'initial column finishes below zero');
   check(byId('inspectState').textContent.includes('initial') && byId('inspectState').textContent.includes('−0.875'),'reference inspector shows the initial-state flip');
   app.startNext();app.advanceTime(2.4);
-  close(app.histogram().values[15],-.6875,'marked amplitude retains the explicit global minus');
-  app.histogram().values.forEach((value,q)=>close(value,q===15?-.6875:-.1875,'first diffuser matches minus inversion about the mean'));
+  close(app.histogram().values[15],.6875,'marked amplitude finishes positive with the common phase correction');
+  app.histogram().values.forEach((value,q)=>close(value,q===15?.6875:.1875,'first diffuser matches inversion about the mean'));
   app.reset();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   byId('levelView').click();await frame();
   close(app.cameraState().elevation,0,'level view reaches exactly zero elevation');
@@ -144,6 +144,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: initial-only sign flip, stationary other columns during phase gates, independent Grover core, identical H steps, genuine intermediate negatives, explicit diffuser global sign, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: initial-only sign flip, stationary other columns during phase gates, independent Grover core, self-inverse H, genuine intermediate negatives, explicit final −H and positive first-round amplitudes, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

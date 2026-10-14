@@ -1,5 +1,5 @@
-import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-initial-flip';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-initial-flip';
+import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-phase-corrected';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-phase-corrected';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
@@ -44,21 +44,21 @@ function buildGridUI() {
     node.append(document.createTextNode(`Iteration ${i+1}`), value); return node;
   }));
   text(dom.repeatCaption, `Prepare once; repeat the four remaining gates ${iterations} ${iterations === 1 ? 'time' : 'times'}.`);
-  text(dom.prepareSymbol, symbol()); text(dom.forwardSymbol, symbol());
+  text(dom.prepareSymbol, symbol()); text(dom.forwardSymbol, `−${symbol()}`);
   text(dom.inverseSymbol, symbol());
-  text(dom.diffuserLabel, `DIFFUSER = ${symbol()} Sᵢ ${symbol()}`);
+  text(dom.diffuserLabel, `DIFFUSER = −${symbol()} Sᵢ ${symbol()}`);
   text(dom.circuitXLabel, `x (${side})`); text(dom.circuitYLabel, `y (${side})`);
   text(dom.circuitTitle, `Grover circuit: two ${side}-level registers`);
-  text(dom.circuitDescription, `Preparation runs once. Oracle, ${symbol()}, initial-state sign flip Sᵢ and the same ${symbol()} repeat ${iterations} times.`);
+  text(dom.circuitDescription, `Preparation runs once. Oracle, ${symbol()}, initial-state sign flip Sᵢ and −${symbol()} repeat ${iterations} times. The final mixer includes a common phase of −1.`);
   dom.circuitPanel.setAttribute('aria-label', dom.circuitTitle.textContent);
   const odd = side % 2;
-  text(dom.mixerNote, odd ? `B† = B: both steps use the same balanced ${stateCount}-state mixer. This is generalized amplitude amplification, not a qubit register.`
-    : `H† = H: both steps use the same ${2*Math.log2(side)}-qubit Hadamard.`);
+  text(dom.mixerNote, odd ? `B† = B: a balanced ${stateCount}-state mixer for generalized amplitude amplification. The final −B includes a common phase of −1.`
+    : `H† = H: the ${2*Math.log2(side)}-qubit Hadamard. The final −H includes a common phase of −1 to give reflection about the prepared state.`);
   text(dom.theoryMixer, odd ? `For ${side}×${side}, B[(x,y),(u,v)] = exp[2πi(xv−yu)/${side}]/${side}. This mathematical generalization is unitary and Hermitian, with equal preparation probabilities from any basis state. In the reflection formula below, replace H with B.`
     : 'On 2×2 and 4×4 grids, H is the tensor-product qubit Hadamard: H† = H and H² = I. H can produce negative amplitudes through interference, including in unmarked states.');
   text(dom.expectedValue, percent(expectedProbability(iterations,side)));
   text(dom.iterationsNote, `The first Grover peak occurs after ${iterations} amplification ${iterations === 1 ? 'round' : 'rounds'} for ${stateCount} states.`);
-  dom.circuitDiagram.setAttribute('aria-label', `Circuit for ${stateCount} states: ${symbol()} preparation, then ${iterations} repeats of oracle, ${symbol()}, initial-state sign flip Sᵢ, and the same ${symbol()}.`);
+  dom.circuitDiagram.setAttribute('aria-label', `Circuit for ${stateCount} states: ${symbol()} preparation, then ${iterations} repeats of oracle, ${symbol()}, initial-state sign flip Sᵢ, and −${symbol()} with a common phase of −1.`);
 }
 function setGridSize(side) {
   if (!simulation.setGridSize(Number(side))) return false;
@@ -106,12 +106,12 @@ function description(kind) {
       : `The oracle flips the marked amplitude's sign. Probabilities stay unchanged; choose Real amplitude to see the column flip.`,
     inverse: `${mixer} = ${mixer}† mixes the amplitudes after the oracle. Unmarked columns can become negative: these are genuine intermediate circuit amplitudes.`,
     reference: `Sᵢ flips only the initial-state amplitude ${ket(simulation.initial)}. Every other amplitude stays fixed, and all probabilities stay unchanged.`,
-    forward: `${mixer} completes amplification. ${mixer} Sᵢ ${mixer} has an overall minus sign relative to inversion about the mean; this changes no probability.`,
+    forward: `−${mixer} completes amplification, including a common phase of −1. The full diffuser is D = −${mixer} Sᵢ ${mixer}: reflection about the prepared state, or about the mean for the all-zero input. The common phase changes no probability.`,
   }[kind];
 }
 function nextLabel(gate) {
   if (!gate) return 'Search complete';
-  return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()} · diffuser 1/3`,reference:'Apply Sᵢ · flip initial',forward:`Apply ${symbol()} · diffuser 3/3`}[gate.kind];
+  return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()} · diffuser 1/3`,reference:'Apply Sᵢ · flip initial',forward:`Apply −${symbol()} · diffuser 3/3`}[gate.kind];
 }
 function syncUI(state) {
   const {stateCount,iterations,gates} = simulation.model, gate = simulation.active, next = gates[state.completed];
@@ -128,7 +128,7 @@ function syncUI(state) {
   dom.progressBar.style.width = `${progress*100}%`; dom.gateProgress.setAttribute('aria-valuenow',Math.round(progress*100));
   text(dom.stageStatus, gate ? `${state.paused ? 'Paused · ' : ''}${gate.name}${gate.iteration ? ` · round ${gate.iteration}/${iterations}` : ''}`
     : !next ? 'Search complete · inspect the result' : state.completed ? 'Checkpoint · apply the next operation' : 'Ready to prepare');
-  const stageLabel = {inverse:`${symbol()} · DIFFUSER 1/3`,reference:'Sᵢ · FLIP INITIAL',forward:`${symbol()} · DIFFUSER 3/3`}[state.kind] || state.kind.toUpperCase();
+  const stageLabel = {inverse:`${symbol()} · DIFFUSER 1/3`,reference:'Sᵢ · FLIP INITIAL',forward:`−${symbol()} · DIFFUSER 3/3`}[state.kind] || state.kind.toUpperCase();
   text(dom.plotBadge,state.busy ? `${state.paused ? 'PAUSED · ' : ''}${stageLabel}${state.iteration ? ` · ROUND ${state.iteration}` : ''}`
     : state.completed === gates.length ? 'SEARCH COMPLETE' : state.completed ? `${stageLabel} · CHECKPOINT` : 'INPUT STATE');
   const probability = state.probabilities[state.target], formatted = percent(probability);
