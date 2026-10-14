@@ -117,26 +117,32 @@ try {
   app.startNext();app.advanceTime(100);check(app.state().completedOperations===1 && !app.state().busy,'combined mode still stops after preparation');
   app.startNext();app.advanceTime(100);check(app.state().completedOperations===2 && !app.state().busy,'combined mode still stops after oracle');
   check(byId('next').textContent==='Apply mixer · H Sᵢ H','next button applies the full mixer');
-  app.startNext();app.advanceTime(2.4);
-  check(app.state().busy && app.state().operationKind==='mixer','combined operation continues past the first H');
+  const directStart=app.histogram().values;
+  app.startNext();app.advanceTime(.6);
+  check(app.state().busy && app.state().kind==='mixer','combined operation uses one direct mixer stage');
   check(byId('combineMixer').disabled && byId('next').disabled,'grouping and next operation lock while the mixer runs');
-  check(document.querySelector('[data-circuit-kind="mixer"]').classList.contains('active'),'combined gate stays active across internal boundaries');
-  close(app.state().operationProgress,2.4/6.4,'progress covers the full mixer');
-  close(app.histogram().values[0],.875,'first H amplitude is preserved inside combined mixer');
-  close(app.histogram().values[3],-.125,'intermediate negative unmarked amplitude remains visible');
-  const combinedBeforeFlip=app.histogram().values;
-  app.advanceTime(.8);close(app.histogram().values[0],0,'combined initial-state flip crosses zero');
-  close(app.state().amplitudes[1],-.875,'combined initial-state flip retains its imaginary component');
-  vector(app.histogram().values.slice(1),combinedBeforeFlip.slice(1),'other columns stay stationary during combined initial flip');
+  check(document.querySelector('[data-circuit-kind="mixer"]').classList.contains('active'),'combined gate stays active throughout the interpolation');
+  for(const progress of [.25,.5,.75]) {
+    if(progress>.25) app.advanceTime(.6);
+    close(app.state().operationProgress,progress,'progress covers one direct transition');
+    const blend=(1-Math.cos(Math.PI*progress))/2;
+    app.histogram().values.forEach((value,q)=>close(value,directStart[q]+blend*(beforeGrouping.amplitudes[2*q]-directStart[q]),'columns interpolate directly between signed endpoints'));
+    check(app.state().kind==='mixer' && app.state().completed===2 && app.state().checkpoints.length===2,'no intermediate gate or checkpoint during the combined transition');
+    close(app.state().norm,1,'direct animation preserves total probability');
+  }
+  check(byId('gateDescription').textContent.includes('directly'),'caption describes direct interpolation');
   app.togglePause();const pausedMixer=app.state();app.advanceTime(100);
   vector(app.state().amplitudes,pausedMixer.amplitudes,'pause freezes a combined mixer');app.togglePause();
-  app.advanceTime(.8);close(app.histogram().values[0],-.875,'combined initial-only flip finishes with its negative sign');
-  check(app.state().busy,'combined mixer continues into the final H');
-  app.advanceTime(2.4);
-  check(!app.state().busy && app.state().completedOperations===3,'one operation stops after the final H');
+  app.advanceTime(.6);
+  check(!app.state().busy && app.state().completedOperations===3,'one operation stops at the full mixer result');
   vector(app.state().amplitudes,beforeGrouping.amplitudes,'combined first mixer exactly matches separately stepped signed amplitudes');
   check(byId('circuitStatus').textContent==='3 / 7 operations' && !byId('combineMixer').disabled,'combined checkpoint exposes the next operation and toggle');
-  check(document.querySelector('[data-circuit-kind="mixer"]').classList.contains('complete'),'combined gate completes after all three steps');
+  check(document.querySelector('[data-circuit-kind="mixer"]').classList.contains('complete'),'combined gate completes at its endpoint');
+  byId('combineMixer').click();
+  check(byId('circuitStatus').textContent==='5 / 13 operations','separate mode maps the completed mixer to all three gates');
+  check(byId('iterationTrack').querySelectorAll('.complete').length===1,'switching mode retains the completed iteration');
+  vector(app.state().amplitudes,beforeGrouping.amplitudes,'switching mode retains the signed result');
+  byId('combineMixer').click();
 
   for(const side of [2,3,4,5]) {
     app.setGridSize(side);app.setInitial(0);app.setTarget(side*side-1);app.reset();
@@ -195,6 +201,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: separate and combined mixers with identical signed amplitudes, Combine toggle placement and state preservation, continuous grouped progress, initial-only sign flip, stationary other columns during phase gates, independent Grover core, identical H steps, genuine intermediate negatives, explicit diffuser global sign, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: direct combined mixer interpolation without intermediate gates, exact signed endpoints matching separate mode, Combine toggle placement and state preservation, normalized animation and continuous progress, separate-mode initial-only sign flip and Hadamard signs, explicit diffuser global sign, complex component views, phase-gate probabilities, step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-combined-mixer`.
+All active page assets and module imports use `?v=20261014-direct-mixer`.
 
 ## Sequence
 
@@ -80,17 +80,21 @@ gate endpoints is a display choice, not a physical simulation or additional
 Grover steps. For any reflection gate G, it uses
 `U(p) = (I+G)/2 + exp(−iπp)(I−G)/2` for progress p from 0 to 1. This preserves
 normalization and uses the exact gate matrix at the endpoint. All H operations
-use the same animation, including the first step of the diffuser. Complex values
-during the animation are not required intermediate states of the discrete algorithm.
+use the same animation, including the first step of the diffuser. With Combine
+enabled, G is the complete `H Sᵢ H` reflection, so the animation goes directly
+from the post-oracle state to the full mixer result. For real endpoints, every
+column follows `(1 − t) × start + t × end`, where `t = (1 − cos(πp))/2`.
+The imaginary component preserves normalization throughout this transition.
+Complex values during the animation are not required intermediate states of the discrete algorithm.
 
 ## Controls
 
-- **Combine**, directly above the mixer gates in the circuit, groups `H → Sᵢ → H`
-  (or `B → Sᵢ → B`) into one operation. The diagram shows one combined block;
-  one click runs the same three animations without stopping between them. Every
-  intermediate amplitude and sign, the initial-state flip, the final global minus,
-  and the total duration remain exactly the same. The 4×4 search has 7 displayed
-  operations in this mode instead of 13. A single progress bar covers the full mixer.
+- **Combine**, directly above the mixer gates in the circuit, shows `H Sᵢ H`
+  (or `B Sᵢ B`) as one operation. The columns interpolate directly from the
+  post-oracle state to the complete mixer result in one 2.4-second animation
+  at 1× speed. No intermediate H or initial-state flip stages are displayed.
+  The exact endpoint retains all signs, including the overall minus. The 4×4
+  search has 7 displayed operations in this mode instead of 13.
   Toggle between modes at an operation boundary outside the mixer; switching keeps
   the current state and iteration history. Finish an active or partially stepped
   mixer (or reset) before switching. The setting persists through reset and grid changes.

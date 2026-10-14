@@ -1,5 +1,5 @@
-import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-combined-mixer';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-combined-mixer';
+import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-direct-mixer';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-direct-mixer';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
@@ -52,13 +52,13 @@ function buildGridUI() {
   text(dom.circuitXLabel, `x (${side})`); text(dom.circuitYLabel, `y (${side})`);
   text(dom.circuitTitle, `Grover circuit: two ${side}-level registers`);
   text(dom.circuitDescription, combined
-    ? `Preparation runs once. Oracle and combined mixer ${symbol()} Sᵢ ${symbol()} repeat ${iterations} times. Each mixer runs the same three gates in sequence as one operation.`
+    ? `Preparation runs once. Oracle and combined mixer ${symbol()} Sᵢ ${symbol()} repeat ${iterations} times. Each mixer animates directly from the post-oracle state to the full mixer result.`
     : `Preparation runs once. Oracle, ${symbol()}, initial-state sign flip Sᵢ and the same ${symbol()} repeat ${iterations} times.`);
   dom.circuitPanel.setAttribute('aria-label', dom.circuitTitle.textContent);
   const odd = side % 2;
   text(dom.mixerNote, (odd ? `B† = B: both steps use the same balanced ${stateCount}-state mixer. This is generalized amplitude amplification, not a qubit register.`
     : `H† = H: both steps use the same ${2*Math.log2(side)}-qubit Hadamard.`)
-    + (combined ? ' Combined: the same three gates run as one operation.' : ''));
+    + (combined ? ' Combined: one direct transition to the full mixer result.' : ''));
   text(dom.theoryMixer, odd ? `For ${side}×${side}, B[(x,y),(u,v)] = exp[2πi(xv−yu)/${side}]/${side}. This mathematical generalization is unitary and Hermitian, with equal preparation probabilities from any basis state. In the reflection formula below, replace H with B.`
     : 'On 2×2 and 4×4 grids, H is the tensor-product qubit Hadamard: H† = H and H² = I. H can produce negative amplitudes through interference, including in unmarked states.');
   text(dom.expectedValue, percent(expectedProbability(iterations,side)));
@@ -116,6 +116,7 @@ function description(kind) {
     inverse: `${mixer} = ${mixer}† mixes the amplitudes after the oracle. Unmarked columns can become negative: these are genuine intermediate circuit amplitudes.`,
     reference: `Sᵢ flips only the initial-state amplitude ${ket(simulation.initial)}. Every other amplitude stays fixed, and all probabilities stay unchanged.`,
     forward: `${mixer} completes amplification. ${mixer} Sᵢ ${mixer} has an overall minus sign relative to inversion about the mean; this changes no probability.`,
+    mixer: `The columns move directly from the post-oracle state to the full ${mixer} Sᵢ ${mixer} result. The overall minus sign is retained.`,
   }[kind];
 }
 function nextLabel(gate) {
@@ -135,9 +136,9 @@ function syncUI(state) {
   dom.pause.disabled = !state.busy; text(dom.pause,state.paused ? 'Resume' : 'Pause');
   dom.combineMixer.disabled = !state.canCombineMixer;
   dom.combineMixer.setAttribute('aria-pressed',state.combineMixer);
-  dom.combineMixer.title = state.busy ? 'Finish the current operation before changing grouping.'
-    : !state.canCombineMixer ? 'Complete the three mixer gates or reset before changing grouping.'
-    : state.combineMixer ? 'Step through the three mixer gates separately.' : 'Run the three mixer gates together as one operation.';
+  dom.combineMixer.title = state.busy ? 'Finish the current operation before changing mixer mode.'
+    : !state.canCombineMixer ? 'Complete the three mixer gates or reset before changing mixer mode.'
+    : state.combineMixer ? 'Step through the three mixer gates separately.' : 'Animate directly to the full mixer result.';
   dom.circuitPanel.classList.toggle('mixerCombined',state.combineMixer);
   text(dom.next,nextLabel(next));
   const progress = state.operationProgress;
@@ -152,7 +153,7 @@ function syncUI(state) {
   text(dom.markedLabel,`MARKED ${ket(state.target)}`); text(dom.initialLabel,`INITIAL ${ket(state.initial)}`);
   text(dom.markedProbability,formatted);
   text(dom.successValue,formatted); text(dom.normValue,percent(state.norm));
-  text(dom.gateDescription,`${state.operationKind === 'mixer' ? 'Combined mixer · ' : ''}${description(state.kind)}`); text(dom.circuitTarget,`w = ${ket(state.target)}`);
+  text(dom.gateDescription,description(state.operationKind)); text(dom.circuitTarget,`w = ${ket(state.target)}`);
   const coordinate = value => simulation.model.side % 2 ? value : value.toString(2).padStart(Math.log2(simulation.model.side), '0');
   text(dom.circuitInputX, `|${coordinate(Math.floor(state.initial / state.side))}⟩`);
   text(dom.circuitInputY, `|${coordinate(state.initial % state.side)}⟩`);
@@ -167,7 +168,7 @@ function syncUI(state) {
   dom.circuitPanel.classList.toggle('paused',state.paused);
   dom.circuitReadout.classList.toggle('complete',state.completed === gates.length);
   for (const node of dom.iterationTrack.children) {
-    const checkpoint = state.checkpoints.find(item => item.iteration === Number(node.dataset.iteration) && item.kind === 'forward');
+    const checkpoint = state.checkpoints.find(item => item.iteration === Number(node.dataset.iteration) && ['forward','mixer'].includes(item.kind));
     node.classList.toggle('complete',!!checkpoint); text(node.lastElementChild,checkpoint ? percent(checkpoint.targetProbability) : '—');
   }
   const q = hovered >= 0 && hovered < stateCount ? hovered : state.kind === 'reference' ? state.initial : state.target;

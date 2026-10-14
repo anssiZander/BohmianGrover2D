@@ -97,6 +97,9 @@ export function evolveGate(state, kind, progress, target, initial = 0) {
   if (['prepare', 'inverse', 'forward'].includes(kind)) end = hadamard(state);
   else if (kind === 'oracle') end = oracle(state, target);
   else if (kind === 'reference') end = referenceFlip(state, initial);
+  // H S_i H is itself a Hermitian reflection. Animate that whole operator
+  // directly, using the post-oracle state and exact full-mixer endpoint.
+  else if (kind === 'mixer') end = hadamard(referenceFlip(hadamard(state), initial));
   else throw new Error(`Unknown gate: ${kind}`);
   return animateReflection(state, end, progress);
 }
@@ -143,7 +146,10 @@ export class SearchSimulation {
   }
   startNext() {
     if (this.active || this.completed >= this.model.gates.length) return false;
-    this.active = {...this.model.gates[this.completed], index: this.completed, elapsed: 0, progress: 0,
+    const next = this.model.gates[this.completed];
+    const gate = this.combineMixer && next.kind === 'inverse'
+      ? {...next, kind: 'mixer', name: `Combined mixer · ${next.symbol} Sᵢ ${next.symbol}`} : next;
+    this.active = {...gate, index: this.completed, elapsed: 0, progress: 0,
       startAmplitudes: Float64Array.from(this.amplitudes)};
     return true;
   }
@@ -158,33 +164,25 @@ export class SearchSimulation {
       if (gate.duration - gate.elapsed < 1e-10) gate.progress = 1;
       this.amplitudes = evolveGate(gate.startAmplitudes, gate.kind, gate.progress, this.target, this.initial);
       if (gate.progress < 1) break;
-      this.last = gate; this.active = null; this.completed++;
+      this.last = gate; this.active = null; this.completed += gate.kind === 'mixer' ? 3 : 1;
       this.checkpoints.push({step: this.completed, kind: gate.kind, iteration: gate.iteration,
         targetProbability: probabilities(this.amplitudes)[this.target]});
-      // Grouping changes only where playback stops. Every gate, amplitude,
-      // animation path, duration and internal checkpoint stays identical.
-      const continueMixer = this.combineMixer && ['inverse', 'reference'].includes(gate.kind);
-      if ((this.autoplay || continueMixer) && this.completed < this.model.gates.length) this.startNext();
+      if (this.autoplay && this.completed < this.model.gates.length) this.startNext();
       else this.autoplay = false;
     }
   }
   snapshot() {
     const gate = this.active || this.last;
     const kind = gate?.kind || 'input', progress = this.active?.progress ?? (this.last ? 1 : 0);
-    const operationKind = this.combineMixer && ['inverse', 'reference', 'forward'].includes(kind) ? 'mixer' : kind;
-    let operationProgress = progress;
-    if (operationKind === 'mixer' && this.active) {
-      const start = 2 + 4 * (gate.iteration - 1), mixer = this.model.gates.slice(start, start + 3);
-      const elapsed = mixer.slice(0, gate.index - start).reduce((sum, item) => sum + item.duration, 0) + gate.elapsed;
-      operationProgress = elapsed / mixer.reduce((sum, item) => sum + item.duration, 0);
-    }
+    const operationKind = this.combineMixer && ['inverse', 'reference', 'forward'].includes(kind) ? 'mixer'
+      : !this.combineMixer && kind === 'mixer' ? 'forward' : kind;
     const completedOperations = this.combineMixer
       ? this.checkpoints.filter(item => !['inverse', 'reference'].includes(item.kind)).length : this.completed;
     return {side: this.model.side, stateCount: this.model.stateCount, iterations: this.model.iterations,
       mixTime: this.model.mixTime, inverseTime: this.model.inverseTime, target: this.target, initial: this.initial,
       completed: this.completed, busy: !!this.active, paused: this.paused, time: this.time,
       kind, iteration: gate?.iteration || 0, progress, norm: normSquared(this.amplitudes),
-      combineMixer: this.combineMixer, canCombineMixer: this.canCombineMixer, operationKind, operationProgress,
+      combineMixer: this.combineMixer, canCombineMixer: this.canCombineMixer, operationKind, operationProgress: progress,
       completedOperations, totalOperations: this.combineMixer ? 1 + 2 * this.model.iterations : this.model.gates.length,
       probabilities: Array.from(probabilities(this.amplitudes)), amplitudes: Array.from(this.amplitudes),
       checkpoints: this.checkpoints.map(item => ({...item}))};

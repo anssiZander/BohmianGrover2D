@@ -134,33 +134,50 @@ test('all initial/marked pairs retain the Grover success curve with the explicit
   }
 });
 
-test('a combined mixer follows the identical complex animation through both internal boundaries',()=>{
-  for(const side of [2,3,4,5]) for(const elapsed of [0,.6,2.4,3.2,4,5.2,6.4,20]) {
-    const split=new SearchSimulation(side*side-1,0,side), combined=new SearchSimulation(side*side-1,0,side);
+test('a combined mixer animates the whole reflection directly with no internal gates or checkpoints',()=>{
+  for(const side of [2,3,4,5]) for(const elapsed of [0,.6,1.2,1.8,2.4,20]) {
+    const combined=new SearchSimulation(side*side-1,side*side-2,side);
     combined.setCombineMixer(true);
-    for(const sim of [split,combined]) {
-      sim.startNext();sim.advance(100);
-      assert.equal(sim.completed,1,'preparation stops separately');
-      sim.startNext();sim.advance(100);
-      assert.equal(sim.completed,2,'oracle stops before mixer');
-      sim.amplitudes=complexState(side);
-    }
-    const duration=split.model.gates.slice(2,5).reduce((sum,gate)=>sum+gate.duration,0);
-    let remaining=Math.min(elapsed,duration);
-    for(const gate of split.model.gates.slice(2,5)) {
-      if(remaining<=1e-12) break;
-      split.startNext();const step=Math.min(remaining,gate.duration);split.advance(step);remaining-=step;
-    }
+    combined.startNext();combined.advance(100);
+    assert.equal(combined.completed,1,'preparation stops separately');
+    combined.startNext();combined.advance(100);
+    assert.equal(combined.completed,2,'oracle stops before mixer');
+    const input=complexState(side);combined.amplitudes=Float64Array.from(input);
     combined.startNext();combined.advance(elapsed);
-    vector(combined.amplitudes,split.amplitudes,`same animated state at ${elapsed}s on ${side}x${side}`);
-    const state=combined.snapshot(), finished=elapsed>=duration;
-    assert.equal(state.busy,!finished,'only stop after the complete mixer');
+    const progress=Math.min(elapsed/2.4,1), finished=progress===1, state=combined.snapshot();
+    // Independent continuous reflection: conjugate only the phase pulse by
+    // the exact H matrices, instead of animating either H as a separate gate.
+    const expected=hadamard(evolveGate(hadamard(input),'reference',progress,0,combined.initial));
+    vector(combined.amplitudes,expected,`direct complex reflection at ${elapsed}s on ${side}x${side}`);
+    assert.equal(state.busy,!finished);
+    assert.equal(state.kind,'mixer','no intermediate H or initial-flip stage');
     assert.equal(state.operationKind,'mixer');
     assert.equal(state.completedOperations,finished?3:2);
+    assert.equal(state.completed,finished?5:2,'primitive gate indices advance together at the endpoint');
+    assert.equal(state.checkpoints.length,finished?3:2,'no intermediate mixer checkpoints');
     assert.equal(state.totalOperations,1+2*state.iterations);
-    close(state.operationProgress,Math.min(elapsed/duration,1),'progress across all three gates');
+    close(state.operationProgress,progress,'one direct animation progress');
     close(state.norm,1,'combined animation norm');
-    if(finished) assert.equal(state.kind,'forward','excess time does not begin the next oracle');
+  }
+});
+
+test('combined real columns interpolate monotonically between the oracle and signed mixer endpoint',()=>{
+  for(const side of [2,3,4,5]) {
+    const sim=new SearchSimulation(side*side-1,0,side);sim.setCombineMixer(true);
+    sim.startNext();sim.advance(100);sim.startNext();sim.advance(100);
+    const input=Float64Array.from(sim.amplitudes);
+    const end=reflectAbout(input,hadamard(basisState(0,side))).map(value=>-value);
+    sim.startNext();
+    for(let sample=1;sample<=10;sample++) {
+      sim.advance(.24);const blend=(1-Math.cos(Math.PI*sample/10))/2;
+      for(let q=0;q<side*side;q++) {
+        const value=sim.amplitudes[2*q];
+        close(value,input[2*q]+blend*(end[2*q]-input[2*q]),'direct eased interpolation of column height');
+        assert.ok(value>=Math.min(input[2*q],end[2*q])-2e-11 && value<=Math.max(input[2*q],end[2*q])+2e-11,'no intermediate gate excursion');
+      }
+      close(normSquared(sim.amplitudes),1);
+    }
+    vector(sim.amplitudes,end,'exact signed endpoint');
   }
 });
 
@@ -171,11 +188,11 @@ test('grouping can change at mixer boundaries without resetting amplitudes, hist
   assert.ok(sim.setCombineMixer(true));
   vector(sim.amplitudes,before.amplitudes);
   assert.deepEqual(sim.checkpoints,before.checkpoints);assert.equal(sim.time,before.time);
-  sim.startNext();sim.advance(3.2);sim.paused=true;
+  sim.startNext();sim.advance(1.2);sim.paused=true;
   const paused=sim.snapshot();sim.advance(100);
   vector(sim.amplitudes,paused.amplitudes,'pause freezes the whole combined operation');
   assert.equal(sim.time,paused.time);assert.equal(sim.setCombineMixer(false),false);
-  sim.paused=false;sim.advance(3.2);
+  sim.paused=false;sim.advance(1.2);
   assert.equal(sim.active,null);assert.equal(sim.completed,5);
   const complete=sim.snapshot();assert.ok(sim.setCombineMixer(false));
   vector(sim.amplitudes,complete.amplitudes);assert.deepEqual(sim.checkpoints,complete.checkpoints);
@@ -191,7 +208,7 @@ test('grouping can change at mixer boundaries without resetting amplitudes, hist
   sim.startNext();sim.advance(100);assert.ok(sim.setCombineMixer(true));
 });
 
-test('combined stepping and autoplay retain every sign for all initial and marked pairs',()=>{
+test('direct combined stepping and autoplay retain the signed endpoints for all initial and marked pairs',()=>{
   for(const side of [2,3,4,5]) for(let initial=0;initial<side*side;initial++) for(let target=0;target<side*side;target++) {
     const split=new SearchSimulation(target,initial,side), combined=new SearchSimulation(target,initial,side);
     combined.setCombineMixer(true);
@@ -203,8 +220,9 @@ test('combined stepping and autoplay retain every sign for all initial and marke
     }
     assert.equal(operations,1+2*combined.model.iterations);
     vector(combined.amplitudes,split.amplitudes,`signed final state ${side}/${initial}/${target}`);
-    assert.deepEqual(combined.checkpoints,split.checkpoints,'every internal checkpoint is preserved');
-    assert.equal(combined.time,split.time,'total animation duration is preserved');
+    const endpoints=combined.checkpoints.map(item=>({...item,kind:item.kind==='mixer'?'forward':item.kind}));
+    assert.deepEqual(endpoints,split.checkpoints.filter(item=>!['inverse','reference'].includes(item.kind)),'preparation, oracle and complete mixer checkpoints agree');
+    close(combined.time,2.4+4*combined.model.iterations,'each combined mixer takes one animation duration');
     if(initial===0 && target===side*side-1) {
       combined.runFull();combined.advance(1000);
       vector(combined.amplitudes,split.amplitudes,'autoplay matches stepping');
