@@ -73,7 +73,8 @@ try {
         close(state.probabilities[state.target],expected,'Grover iteration probability');
       }
     }
-    check(byId('next').disabled,'next disables after the final operation');
+    check(!byId('next').disabled,'next remains available at the recommended measurement point');
+    check(byId('circuitReadout').classList.contains('complete'),'measurement icon lights at the recommended point');
     check(byId('iterationTrack').querySelectorAll('.complete').length===expectedIterations,'all round checkpoints displayed');
     const stepped=app.state();app.runFull();app.advanceTime(1000);
     vector(app.state().amplitudes,stepped.amplitudes,'autoplay matches stepping exactly');
@@ -196,7 +197,7 @@ try {
     app.reset();app.setCombineMixer(combine);app.setInitial(0);app.setTarget(15);
     const cameraBeforeBack=app.cameraState(), states=[app.state()];
     check(byId('previous').disabled,'Previous step is disabled at the input state');
-    while(app.startNext()) {app.advanceTime(100);states.push(app.state());}
+    while(!app.state().recommendedReached && app.startNext()) {app.advanceTime(100);states.push(app.state());}
     const final=app.state();
     for(let step=states.length-2;step>=0;step--) {
       check(!byId('previous').disabled,'Previous step is available after an operation');
@@ -211,7 +212,7 @@ try {
       check(actual.combineMixer===combine && actual.initial===0 && actual.target===15,'going back keeps mode and selected states');
     }
     check(byId('previous').disabled && !app.previousStep(),'cannot step before the input');
-    while(app.startNext()) app.advanceTime(100);
+    while(!app.state().recommendedReached && app.startNext()) app.advanceTime(100);
     vector(app.state().amplitudes,final.amplitudes,'forward replay after rewinding returns the same result');
     app.runFull();app.advanceTime(4.6);byId('pause').click();
     check(app.state().busy && app.state().paused && !byId('previous').disabled,'Previous step remains usable during a paused operation');
@@ -293,6 +294,50 @@ try {
     app.advanceTime(1.2);
     app.state().amplitudes.forEach((v,k)=>close(v,input[k]+(k%2?imag:reference).shifts[Math.floor(k/2)],'complex endpoint matches phase-aware per-column displacement'));
   }
+  for(const side of [2,3,4,5]) for(const combine of [false,true]) {
+    app.setGridSize(side);app.setInitial(0);app.setTarget(side*side-1);app.reset();app.setCombineMixer(combine);app.setColumnView('real');
+    app.runFull();app.advanceTime(1000);const optimal=app.state(), timeline=[optimal];
+    check(optimal.recommendedReached && !optimal.busy && !byId('next').disabled,'autoplay stops at optimum with continuation available');
+    check(byId('circuitReadout').classList.contains('complete'),'measurement icon lights at recommended round');
+    check(getComputedStyle(byId('circuitReadout').querySelector('circle')).stroke==='rgb(255, 215, 109)','measurement icon uses its lit gold appearance');
+    check(byId('stageStatus').textContent.includes('Recommended measurement'),'recommended stop is explained in status');
+    app.advanceTime(1000);vector(app.state().amplitudes,optimal.amplitudes,'automatic run waits at the recommended stop');
+    const stop=optimal.completed;
+    while(app.state().completed<stop+8) {
+      byId('next').click();
+      check(app.state().busy && byId('circuitReadout').classList.contains('complete'),'icon remains lit during an extra operation');
+      check(byId('stageStatus').textContent.includes('beyond recommended stop'),'active extra round is labelled');
+      app.advanceTime(100);const state=app.state();timeline.push(state);
+      check(!byId('next').disabled && byId('circuitReadout').classList.contains('complete'),'each extra checkpoint allows another operation and keeps stop indication');
+      check(byId('plotBadge').textContent.includes('BEYOND RECOMMENDED STOP'),'extra checkpoint is distinguished from recommended stop');
+      check(byId('circuitStatus').textContent.includes('recommended stop at'),'counter identifies its original stopping threshold');
+      if(['forward','mixer'].includes(state.kind)) {
+        const round=state.completedIterations, expected=Math.sin((2*round+1)*Math.asin(1/side))**2;
+        close(state.probabilities[state.target],expected,'continued UI rounds follow the Grover curve');
+        check(byId('iterationTrack').querySelectorAll('.complete').length===round,'history includes extra completed rounds');
+        check(byId('iterationTrack').lastElementChild.dataset.iteration===String(round),'latest extra iteration is shown');
+        if(round===optimal.iterations+1) check(state.probabilities[state.target]<optimal.probabilities[state.target],'first extra round visibly overshoots the peak');
+        const mean=app.histogram().values.reduce((sum,v)=>sum+v,0)/(side*side);
+        app.histogram().meanGuide.values.forEach(v=>close(v,mean,'moving mean remains correct in extra rounds'));
+      }
+    }
+    for(let step=timeline.length-2;step>=0;step--) {
+      byId('previous').click();vector(app.state().amplitudes,timeline[step].amplitudes,'rewind extra UI checkpoints exactly');
+      check(byId('circuitReadout').classList.contains('complete'),'rewinding beyond or at recommended point keeps icon lit');
+    }
+    byId('previous').click();
+    check(!app.state().recommendedReached && !byId('circuitReadout').classList.contains('complete'),'rewinding before recommended point turns measurement indicator off');
+    byId('next').click();app.advanceTime(100);
+    check(app.state().recommendedReached && byId('circuitReadout').classList.contains('complete'),'replaying to recommended point lights measurement again');
+    app.reset();check(!byId('circuitReadout').classList.contains('complete'),'reset clears measurement indicator');
+  }
+  app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.setCombineMixer(true);app.runFull();app.advanceTime(1000);
+  while(app.state().completedIterations<10) {byId('next').click();app.advanceTime(100);}
+  check(byId('iterationTrack').children.length===10 && byId('iterationTrack').scrollWidth>byId('iterationTrack').clientWidth,'long history scrolls instead of squeezing the circuit');
+  const historyBounds=byId('iterationTrack').getBoundingClientRect(), lastRoundBounds=byId('iterationTrack').lastElementChild.getBoundingClientRect();
+  check(lastRoundBounds.right<=historyBounds.right+2 && lastRoundBounds.left>=historyBounds.left-2,'new extra iteration scrolls into view');
+  check(byId('circuitReadout').classList.contains('complete'),'measurement remains lit through many extra rounds');
+
   app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.setCombineMixer(false);app.setColumnView('real');
   app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(.8);app.setColumnView('imaginary');
   app.histogram().meanGuide.values.forEach(v=>close(v,-.25/16,'live guide follows complex mean during oracle'));
@@ -306,6 +351,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: moving mean planes with exactly the same displacement as columns in every combined round, zero crossing and final mean, live separate-gate means, pause and rewind, phase-aware moving tiles, complex-component means, guide visibility and probability-view exclusion, direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: unlimited manual rounds beyond the first peak, gold measurement indicator at and after the recommended stop, autoplay stopping at optimum, extra-round history and scrolling, exact extra-round rewind and replay, moving mean planes with exactly the same displacement as columns, zero crossing and final mean, live separate-gate means, pause and rewind, phase-aware moving tiles, complex-component means, guide visibility and probability-view exclusion, direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

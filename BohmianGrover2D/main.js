@@ -1,5 +1,5 @@
-import { SearchSimulation, expectedProbability, mixerProjection } from './ordinary-core.js?v=20261014-moving-mean';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-moving-mean';
+import { SearchSimulation, expectedProbability, mixerProjection } from './ordinary-core.js?v=20261014-continue-rounds';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-continue-rounds';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
@@ -24,6 +24,11 @@ const symbol = () => simulation.model.side % 2 ? 'B' : 'H';
 const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
 const markDirty = () => { dirty = true; };
 function error(message) { text(dom.error, message); dom.error.hidden = !message; }
+function iterationNode(iteration) {
+  const node = document.createElement('span'); node.dataset.iteration = iteration;
+  const value = document.createElement('b'); value.textContent = '—';
+  node.append(document.createTextNode(`Iteration ${iteration}`), value); return node;
+}
 
 function buildGridUI() {
   const { side, stateCount, labels, iterations } = simulation.model;
@@ -31,7 +36,7 @@ function buildGridUI() {
   dom.gridSize.value = side; text(dom.gridSizeValue, `${side} × ${side}`);
   dom.gridSize.setAttribute('aria-valuetext', `${side} by ${side}, ${stateCount} states`);
   text(dom.gridSummary, `${stateCount} computational basis states. Changing size resets the search.`);
-  text(dom.stateCountLabel, `${stateCount} states · ${iterations} ${iterations === 1 ? 'iteration' : 'iterations'}`);
+  text(dom.stateCountLabel, `${stateCount} states · ${iterations} ${iterations === 1 ? 'round' : 'rounds'} recommended`);
   document.title = `Ordinary Grover · ${side}×${side}`;
   text(dom.appTitle, document.title);
   for (const select of [dom.initialState, dom.targetState]) {
@@ -40,12 +45,8 @@ function buildGridUI() {
       option.textContent = `|${label}⟩  ·  (${Math.floor(q / side)}, ${q % side})`; return option;
     }));
   }
-  dom.iterationTrack.replaceChildren(...Array.from({length: iterations}, (_, i) => {
-    const node = document.createElement('span'); node.dataset.iteration = i+1;
-    const value = document.createElement('b'); value.textContent = '—';
-    node.append(document.createTextNode(`Iteration ${i+1}`), value); return node;
-  }));
-  text(dom.repeatCaption, `Prepare once; repeat ${combined ? 'oracle and combined mixer' : 'the four remaining gates'} ${iterations} ${iterations === 1 ? 'time' : 'times'}.`);
+  dom.iterationTrack.replaceChildren(...Array.from({length: iterations}, (_, i) => iterationNode(i+1)));
+  text(dom.repeatCaption, `Recommended: ${iterations} ${iterations === 1 ? 'round' : 'rounds'} after preparation. Keep stepping to explore further rounds.`);
   text(dom.prepareSymbol, symbol()); text(dom.forwardSymbol, symbol());
   text(dom.inverseSymbol, symbol());
   text(dom.combinedMixerSymbol, `${symbol()} Sᵢ ${symbol()}`);
@@ -53,8 +54,8 @@ function buildGridUI() {
   text(dom.circuitXLabel, `x (${side})`); text(dom.circuitYLabel, `y (${side})`);
   text(dom.circuitTitle, `Grover circuit: two ${side}-level registers`);
   text(dom.circuitDescription, combined
-    ? `Preparation runs once. Oracle and combined mixer ${symbol()} Sᵢ ${symbol()} repeat ${iterations} times. Each mixer animates directly from the post-oracle state to the full mixer result.`
-    : `Preparation runs once. Oracle, ${symbol()}, initial-state sign flip Sᵢ and the same ${symbol()} repeat ${iterations} times.`);
+    ? `Preparation runs once. Each round applies the oracle and combined mixer ${symbol()} Sᵢ ${symbol()}. Measure after ${iterations} rounds for the first Grover peak; further rounds remain available.`
+    : `Preparation runs once. Each round applies oracle, ${symbol()}, initial-state sign flip Sᵢ and the same ${symbol()}. Measure after ${iterations} rounds for the first Grover peak; further rounds remain available.`);
   dom.circuitPanel.setAttribute('aria-label', dom.circuitTitle.textContent);
   const odd = side % 2;
   text(dom.mixerNote, (odd ? `B† = B: both steps use the same balanced ${stateCount}-state mixer. This is generalized amplitude amplification, not a qubit register.`
@@ -125,7 +126,6 @@ function description(kind) {
   }[kind];
 }
 function nextLabel(gate) {
-  if (!gate) return 'Search complete';
   if (simulation.combineMixer && ['inverse', 'reference', 'forward'].includes(gate.kind)) return `Apply mixer · ${symbol()} Sᵢ ${symbol()}`;
   return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()} · diffuser 1/3`,reference:'Apply Sᵢ · flip initial',forward:`Apply ${symbol()} · diffuser 3/3`}[gate.kind];
 }
@@ -139,14 +139,16 @@ function meanGuide(state) {
     values, inputValues, outputValues: inputValues.map(value => -value), shifts: inputValues.map(value => -2 * value)};
 }
 function syncUI(state, guide = meanGuide(state)) {
-  const {stateCount,iterations,gates} = simulation.model, gate = simulation.active, next = gates[state.completed];
+  const {stateCount,iterations} = simulation.model, gate = simulation.active, next = simulation.nextGate;
+  const atRecommended = state.completed === 1+4*iterations && !state.busy;
   dom.initialState.value = state.initial; dom.targetState.value = state.target;
   for (const node of [dom.initialState,dom.targetState,dom.selectInitial,dom.selectTarget]) node.disabled = state.busy;
   dom.selectInitial.setAttribute('aria-pressed', selection === 'initial'); dom.selectTarget.setAttribute('aria-pressed', selection === 'target');
   text(dom.selectionTitle, selection ? `Pick ${selection === 'initial' ? 'initial' : 'marked'} state` : 'Choose initial / marked state');
   dom.c.classList.toggle('picking',!!selection);
   text(dom.selectionHint, state.busy ? 'Selection is locked during the operation. Drag to orbit.' : selection ? 'Click a column or square. Drag still orbits the camera.' : 'Use the selectors or pick a square. Drag to orbit.');
-  dom.next.disabled = state.busy || !next || !ready; dom.full.disabled = state.busy || !ready;
+  dom.next.disabled = state.busy || !ready; dom.full.disabled = state.busy || !ready;
+  dom.next.title = state.recommendedReached ? 'Continue beyond the recommended measurement point.' : 'Apply the next operation.';
   dom.previous.disabled = !ready || (!state.busy && state.completed === 0);
   dom.previous.title = state.busy ? 'Return to the start of this operation.' : 'Return to the previous checkpoint.';
   dom.pause.disabled = !state.busy; text(dom.pause,state.paused ? 'Resume' : 'Pause');
@@ -160,11 +162,15 @@ function syncUI(state, guide = meanGuide(state)) {
   const progress = state.operationProgress;
   dom.progressBar.style.width = `${progress*100}%`; dom.gateProgress.setAttribute('aria-valuenow',Math.round(progress*100));
   const operationName = state.operationKind === 'mixer' ? `Combined mixer · ${symbol()} Sᵢ ${symbol()}` : gate?.name;
-  text(dom.stageStatus, gate ? `${state.paused ? 'Paused · ' : ''}${operationName}${gate.iteration ? ` · round ${gate.iteration}/${iterations}` : ''}`
-    : !next ? 'Search complete · inspect the result' : state.completed ? 'Checkpoint · apply the next operation' : 'Ready to prepare');
+  text(dom.stageStatus, gate ? `${state.paused ? 'Paused · ' : ''}${operationName}${gate.iteration ? ` · round ${gate.iteration}${gate.iteration > iterations ? ' · beyond recommended stop' : `/${iterations}`}` : ''}`
+    : atRecommended ? 'Recommended measurement point · continue to explore'
+    : state.recommendedReached ? `Beyond recommended stop · ${state.completedIterations} rounds completed`
+    : state.completed ? 'Checkpoint · apply the next operation' : 'Ready to prepare');
   const stageLabel = {inverse:`${symbol()} · DIFFUSER 1/3`,reference:'Sᵢ · FLIP INITIAL',forward:`${symbol()} · DIFFUSER 3/3`,mixer:'COMBINED MIXER'}[state.operationKind] || state.kind.toUpperCase();
   text(dom.plotBadge,state.busy ? `${state.paused ? 'PAUSED · ' : ''}${stageLabel}${state.iteration ? ` · ROUND ${state.iteration}` : ''}`
-    : state.completed === gates.length ? 'SEARCH COMPLETE' : state.completed ? `${stageLabel} · CHECKPOINT` : 'INPUT STATE');
+    : atRecommended ? `RECOMMENDED MEASUREMENT · ROUND ${iterations}`
+    : state.recommendedReached ? `${stageLabel} · ROUND ${state.iteration} · BEYOND RECOMMENDED STOP`
+    : state.completed ? `${stageLabel} · CHECKPOINT` : 'INPUT STATE');
   const probability = state.probabilities[state.target], formatted = percent(probability);
   text(dom.markedLabel,`MARKED ${ket(state.target)}`); text(dom.initialLabel,`INITIAL ${ket(state.initial)}`);
   text(dom.markedProbability,formatted);
@@ -173,7 +179,9 @@ function syncUI(state, guide = meanGuide(state)) {
   const coordinate = value => simulation.model.side % 2 ? value : value.toString(2).padStart(Math.log2(simulation.model.side), '0');
   text(dom.circuitInputX, `|${coordinate(Math.floor(state.initial / state.side))}⟩`);
   text(dom.circuitInputY, `|${coordinate(state.initial % state.side)}⟩`);
-  text(dom.circuitStatus,`${state.completedOperations} / ${state.totalOperations} operations`);
+  text(dom.circuitStatus,state.completedOperations > state.totalOperations
+    ? `${state.completedOperations} operations · recommended stop at ${state.totalOperations}`
+    : `${state.completedOperations} / ${state.totalOperations} operations`);
   for (const node of gateNodes) {
     const kind = node.dataset.circuitKind;
     const gateIndex = kind === 'prepare' ? 0 : 1 + 4 * Math.max(0,state.iteration-1) + (kind === 'mixer' ? 3 : ['oracle','inverse','reference','forward'].indexOf(kind));
@@ -182,9 +190,18 @@ function syncUI(state, guide = meanGuide(state)) {
     node.classList.toggle('future',state.completed <= gateIndex && !(state.busy && state.operationKind === kind));
   }
   dom.circuitPanel.classList.toggle('paused',state.paused);
-  dom.circuitReadout.classList.toggle('complete',state.completed === gates.length);
+  dom.circuitReadout.classList.toggle('complete',state.recommendedReached);
+  dom.circuitReadout.setAttribute('aria-label',state.recommendedReached
+    ? `Recommended measurement after round ${iterations} reached. Further rounds are optional.`
+    : `Recommended measurement after round ${iterations}.`);
+  const shownIterations = Math.max(iterations,state.iteration);
+  const expanded = dom.iterationTrack.children.length < shownIterations;
+  while (dom.iterationTrack.children.length < shownIterations) dom.iterationTrack.append(iterationNode(dom.iterationTrack.children.length+1));
+  while (dom.iterationTrack.children.length > shownIterations) dom.iterationTrack.lastElementChild.remove();
+  if (expanded) dom.iterationTrack.scrollLeft = dom.iterationTrack.scrollWidth;
   for (const node of dom.iterationTrack.children) {
     const checkpoint = state.checkpoints.find(item => item.iteration === Number(node.dataset.iteration) && ['forward','mixer'].includes(item.kind));
+    node.classList.toggle('active',state.busy && state.iteration === Number(node.dataset.iteration));
     node.classList.toggle('complete',!!checkpoint); text(node.lastElementChild,checkpoint ? percent(checkpoint.targetProbability) : '—');
   }
   const q = hovered >= 0 && hovered < stateCount ? hovered : state.kind === 'reference' ? state.initial : state.target;

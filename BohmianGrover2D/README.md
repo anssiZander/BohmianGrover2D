@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-moving-mean`.
+All active page assets and module imports use `?v=20261014-continue-rounds`.
 
 ## Sequence
 
@@ -62,9 +62,9 @@ unmarked amplitude is −0.1875. After round 3 they are −0.98046875 and +0.050
 respectively. The displayed amplitudes differ from the positive-D convention
 by the common factor `(-1)^round` at complete rounds.
 
-Preparation runs once;
-the remaining four operations repeat 1, 2, 3, or 3 times for 2×2, 3×3, 4×4,
-or 5×5 respectively. For the default 4×4 grid, the marked probability is 6.25%
+Preparation runs once. The recommended first peak is after 1, 2, 3, or 3 rounds
+for 2×2, 3×3, 4×4, or 5×5 respectively; manual rounds can continue indefinitely.
+For the default 4×4 grid, the marked probability is 6.25%
 after preparation and 47.265625%, 90.844727%, and 96.131897% after each round.
 
 On 2×2 and 4×4, `H` is the usual tensor-product qubit Hadamard. The 3×3 and
@@ -115,7 +115,14 @@ Complex values during the animation are not required intermediate states of the 
   the current state and iteration history. Finish an active or partially stepped
   mixer (or reset) before switching. The setting persists through reset and grid changes.
 - **Apply next operation** animates one operation and stops at its checkpoint.
-  **Run full search** starts again from the selected input and runs all gates.
+  It remains available beyond the recommended Grover peak, so additional
+  oracle–mixer rounds can show overshoot and later oscillations. The measurement
+  icon lights at the recommended round and remains lit during further rounds;
+  rewinding before that point turns it off. The iteration history extends and
+  scrolls horizontally as needed. Both mixer modes and Previous step work in
+  these extra rounds, with the same exact amplitude signs and moving mean plane.
+  **Run full search** starts again from the selected input and stops at the
+  recommended measurement point. Continue manually with the next-operation button.
 - **Previous step**, beside the next-operation button, restores the preceding
   checkpoint with its exact signed amplitudes and updates the circuit and iteration
   history. In combined mode, the whole mixer counts as one step. During a running

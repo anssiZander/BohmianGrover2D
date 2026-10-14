@@ -157,10 +157,18 @@ export class SearchSimulation {
     if (this.active || !Number.isInteger(initial) || initial < 0 || initial >= this.model.stateCount) return false;
     this.initial = initial; this.reset(); return true;
   }
+  gateAt(index) {
+    if (!Number.isInteger(index) || index < 0) return null;
+    if (index < this.model.gates.length) return this.model.gates[index];
+    // Continue the same four gates beyond the recommended measurement round.
+    const template = this.model.gates[1 + (index - 1) % 4];
+    return {...template, iteration: Math.floor((index - 1) / 4) + 1};
+  }
+  get nextGate() { return this.gateAt(this.completed); }
   previousStep() {
     if (!this.active && this.completed === 0) return false;
     let target = this.completed;
-    if (!this.active) target -= this.combineMixer && this.model.gates[target - 1].kind === 'forward' ? 3 : 1;
+    if (!this.active) target -= this.combineMixer && this.gateAt(target - 1).kind === 'forward' ? 3 : 1;
     // Restore exact checkpoints in the selected mode. This also handles
     // stepping inside a mixer that was previously completed in combined mode.
     this.reset();
@@ -170,8 +178,8 @@ export class SearchSimulation {
     return true;
   }
   startNext() {
-    if (this.active || this.completed >= this.model.gates.length) return false;
-    const next = this.model.gates[this.completed];
+    if (this.active) return false;
+    const next = this.nextGate;
     // Retain the post-oracle reference through all three gates and their endpoint.
     // Previous step reconstructs it along with the other exact checkpoints.
     if (next.kind === 'inverse') this.mixerInput = Float64Array.from(this.amplitudes);
@@ -213,6 +221,8 @@ export class SearchSimulation {
       kind, iteration: gate?.iteration || 0, progress, norm: normSquared(this.amplitudes),
       combineMixer: this.combineMixer, canCombineMixer: this.canCombineMixer, operationKind, operationProgress: progress,
       completedOperations, totalOperations: this.combineMixer ? 1 + 2 * this.model.iterations : this.model.gates.length,
+      completedIterations: Math.max(0, Math.floor((this.completed - 1) / 4)),
+      recommendedReached: this.completed >= this.model.gates.length,
       probabilities: Array.from(probabilities(this.amplitudes)), amplitudes: Array.from(this.amplitudes),
       mixerInput: this.mixerInput ? Array.from(this.mixerInput) : null,
       checkpoints: this.checkpoints.map(item => ({...item}))};

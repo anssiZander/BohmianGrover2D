@@ -112,7 +112,7 @@ test('the 4x4 checkpoint signs include the initial-only flip and genuine Hadamar
     vector(sim.amplitudes.filter((_,k)=>k%2===0),amplitudes,sim.last.kind);
     sim.amplitudes.filter((_,k)=>k%2===1).forEach(value=>assert.equal(Math.abs(value),0));
   }
-  while(sim.startNext()) sim.advance(10);
+  while(sim.completed<sim.model.gates.length && sim.startNext()) sim.advance(10);
   sim.amplitudes.filter((_,k)=>k%2===0).forEach((value,q)=>close(value,q===15?-.98046875:.05078125,'round three sign'));
 });
 
@@ -246,9 +246,9 @@ test('direct combined stepping and autoplay retain the signed endpoints for all 
   for(const side of [2,3,4,5]) for(let initial=0;initial<side*side;initial++) for(let target=0;target<side*side;target++) {
     const split=new SearchSimulation(target,initial,side), combined=new SearchSimulation(target,initial,side);
     combined.setCombineMixer(true);
-    while(split.startNext()) split.advance(100);
+    while(split.completed<split.model.gates.length && split.startNext()) split.advance(100);
     let operations=0;
-    while(combined.startNext()) {
+    while(combined.completed<combined.model.gates.length && combined.startNext()) {
       combined.advance(100);operations++;
       assert.equal(combined.snapshot().completedOperations,operations);
     }
@@ -270,7 +270,7 @@ test('previous step restores every exact signed checkpoint and supports replay i
     const sim=new SearchSimulation(target,initial,side);sim.setCombineMixer(combine);
     assert.equal(sim.previousStep(),false);
     const states=[sim.snapshot()];
-    while(sim.startNext()) {sim.advance(100);states.push(sim.snapshot());}
+    while(sim.completed<sim.model.gates.length && sim.startNext()) {sim.advance(100);states.push(sim.snapshot());}
     const final=sim.snapshot();
     for(let step=states.length-2;step>=0;step--) {
       assert.ok(sim.previousStep());const actual=sim.snapshot(), expected=states[step];
@@ -283,7 +283,7 @@ test('previous step restores every exact signed checkpoint and supports replay i
       close(actual.time,expected.time,'restore checkpoint animation time');
     }
     assert.equal(sim.previousStep(),false,'cannot move before the input state');
-    while(sim.startNext()) sim.advance(100);
+    while(sim.completed<sim.model.gates.length && sim.startNext()) sim.advance(100);
     assert.deepEqual(sim.snapshot().amplitudes,final.amplitudes,'replaying reaches exactly the same final state');
     assert.deepEqual(sim.checkpoints,final.checkpoints);
   }
@@ -321,4 +321,62 @@ test('previous step follows the selected mixer mode after switching modes',()=>{
   close(sim.amplitudes[0],-.875);assert.equal(sim.last.kind,'reference');
   assert.equal(sim.checkpoints.some(item=>['forward','mixer'].includes(item.kind)),false);
   sim.startNext();sim.advance(100);assert.deepEqual(Array.from(sim.amplitudes),mixed);
+});
+
+test('manual rounds continue beyond the first peak with the exact Grover amplitudes and signs',()=>{
+  for(const side of [2,3,4,5]) for(const combine of [false,true]) for(const initial of [0,side*side-1]) {
+    const sim=new SearchSimulation(side*side-2,initial,side);sim.setCombineMixer(combine);
+    const prepared=hadamard(basisState(initial,side)), theta=Math.asin(1/side);
+    assert.ok(sim.startNext());sim.advance(100);
+    for(let round=1;round<=sim.model.iterations+16;round++) {
+      while(sim.completed<1+4*round) {
+        assert.equal(sim.nextGate.iteration,round,'generated gate belongs to the next round');
+        assert.ok(sim.startNext());sim.advance(100);
+        assert.equal(sim.snapshot().recommendedReached,sim.completed>=sim.model.gates.length);
+      }
+      const state=sim.snapshot(), angle=(2*round+1)*theta;
+      assert.equal(state.completedIterations,round);
+      assert.equal(state.completedOperations,1+(combine?2:4)*round);
+      close(state.norm,1,'norm beyond optimum');
+      close(state.probabilities[sim.target],Math.sin(angle)**2,'probability through overshoot and later peaks');
+      state.amplitudes.forEach((value,k)=>{
+        const factor=Math.floor(k/2)===sim.target ? side*Math.sin(angle) : side*Math.cos(angle)/Math.sqrt(side*side-1);
+        close(value,(-1)**round*prepared[k]*factor,'signed amplitude remains standard Grover beyond optimum');
+      });
+    }
+    assert.equal(sim.checkpoints.filter(item=>item.kind==='prepare').length,1,'preparation runs only once');
+    assert.ok(sim.startNext(),'further rounds remain available');
+  }
+});
+
+test('autoplay stops at the recommended measurement, then manual stepping reaches the overshoot round',()=>{
+  for(const side of [2,3,4,5]) for(const combine of [false,true]) {
+    const sim=new SearchSimulation(side*side-1,0,side);sim.setCombineMixer(combine);
+    sim.runFull();sim.advance(10000);const optimal=sim.snapshot();
+    assert.equal(optimal.completed,sim.model.gates.length);
+    assert.ok(optimal.recommendedReached);assert.equal(optimal.busy,false);assert.equal(sim.autoplay,false);
+    sim.advance(1000);assert.deepEqual(sim.snapshot(),optimal,'autoplay waits at the recommended stop');
+    while(sim.completed<sim.model.gates.length+4) {assert.ok(sim.startNext());sim.advance(100);}
+    assert.equal(sim.snapshot().completedIterations,optimal.iterations+1);
+    assert.ok(sim.snapshot().recommendedReached,'recommended point remains reached after overshoot');
+    assert.ok(sim.snapshot().probabilities[sim.target]<optimal.probabilities[sim.target],'first extra round lowers success probability');
+    sim.reset();assert.equal(sim.snapshot().recommendedReached,false);
+  }
+});
+
+test('Previous step restores checkpoints and the recommended-stop indication across extra rounds',()=>{
+  for(const combine of [false,true]) {
+    const sim=new SearchSimulation(15,0,4);sim.setCombineMixer(combine);const states=[sim.snapshot()];
+    while(sim.completed<sim.model.gates.length+12) {sim.startNext();sim.advance(100);states.push(sim.snapshot());}
+    const final=sim.snapshot();
+    sim.startNext();sim.advance(.4);sim.paused=true;sim.previousStep();
+    assert.deepEqual(sim.snapshot(),final,'cancel an active extra operation exactly');
+    for(let i=states.length-2;i>=0;i--) {
+      sim.previousStep();assert.deepEqual(sim.snapshot(),states[i],'rewind exact state, history and stop indication');
+    }
+    while(sim.completed<final.completed) {sim.startNext();sim.advance(100);}
+    assert.deepEqual(sim.snapshot(),final,'forward replay past optimum is exact');
+    assert.ok(sim.setCombineMixer(!combine));
+    sim.previousStep();assert.equal(sim.completed,final.completed-(combine?1:3),'rewind uses the currently selected mixer mode beyond optimum');
+  }
 });
