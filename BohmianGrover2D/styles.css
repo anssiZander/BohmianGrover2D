@@ -57,3 +57,5 @@ select{font:inherit;min-width:0;max-width:100%;color:#e8f2ff;background:#0a203b;
 .selectionActions{grid-column:2;grid-row:1;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}.selectionActions button{font-size:10px;padding:5px 7px}#selectionNext{border-color:rgba(104,206,255,.55)}
 .flowToggles #markersToggle[aria-pressed=true]{color:#b9ffd0;border-color:rgba(72,237,124,.45)}
 @media(max-width:650px){#waveHeader{grid-template-columns:minmax(125px,.8fr) minmax(0,1.2fr);gap:5px 9px}#selectionGuide{grid-template-columns:1fr}#selectionTitle{grid-column:1;grid-row:1}#selectionHint{grid-column:1;grid-row:2;font-size:10px}.selectionActions{grid-column:1;grid-row:3;justify-content:flex-start}}
+
+#particleCountValue{flex-basis:56px}

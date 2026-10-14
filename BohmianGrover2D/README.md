@@ -50,6 +50,9 @@ Open http://127.0.0.1:8835/ in a desktop WebGL2 browser. No dependencies or buil
   phase-gate correction), or spin current. This only changes the arrows.
   The particles always follow total current divided by total density, including
   while their display is hidden. They have no permanent binary spin label.
+- **Particles** uses a logarithmic slider from 1,000 to 100,000 (default 4,000).
+  The displayed count updates while dragging; releasing the slider resets the
+  search with the selected ensemble. The count is locked during a running gate.
 - Gold trails retain the parent's adjustable half-life, with lower display
   exposure to keep the spin density visible beneath the added circulation.
   Speed, Pause, recording, particle motion, and trail fading share one clock.

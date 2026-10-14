@@ -1,5 +1,22 @@
 # Verification — SPINMultiRegionFree
 
+## Logarithmic particle slider — 2026-10-14
+
+The UI range is 1,000–100,000 particles, logarithmically mapped with a 10,000
+midpoint, readable 100-particle steps, and the existing 4,000 default. Input
+previews the count; change commits a new ensemble. Rounded values preserve
+thumb position so keyboard increments accumulate normally. The API cap is
+100,000; its lower-count verification fixtures remain supported.
+
+**46/46 numerical tests and 459/459 flow browser checks pass.** The updated
+flow fixture covers logarithmic endpoints/midpoint, previews, release/reset,
+keyboard steps, existing gate-current and sampling checks, and a complete
+100,000-particle 5×5 search. Failed/invalid steps and WebGL errors are zero;
+maximum sampled clock lag is 3.331e-16. GPU: RTX 4070 Laptop, ANGLE / D3D11.
+Static assets, JavaScript syntax, and whitespace checks also pass.
+
+The older 16,000-particle measurements below are historical results.
+
 ## Guide in the title margin — 2026-09-29
 
 Moved the guide into the existing title header and removed its separate row

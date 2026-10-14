@@ -15,7 +15,7 @@ for (const shader of shaders) {
   if (!shader.endsWith('.glsl') && !source.startsWith('#version 300 es')) throw new Error(`${shader}: missing GLSL version`);
   if ([...source].filter(c => c === '{').length !== [...source].filter(c => c === '}').length) throw new Error(`${shader}: unbalanced braces`);
 }
-for (const [, path] of html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)) await read(path);
+for (const [, path] of html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)) await read(path.split('?')[0]);
 if (!recording.includes('window.BohmianGrover2D') || !recording.includes('grover-spin-')) throw new Error('Missing recording bridge or filename');
 console.log(`${required.length} DOM references and all sphere nodes present; HTML IDs unique.`);
 console.log(`${shaders.length} WebGL2 shader sources and all local page assets present; recording bridge intact.`);
