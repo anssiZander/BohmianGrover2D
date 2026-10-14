@@ -19,6 +19,11 @@ try {
   check(!document.querySelector('#particlesToggle,#currentToggle,#waveArea,#groverGeometry'),'no physical visualizations in the page');
   check(app.histogram().view==='real','signed real amplitude is the default');
   check(byId('rightColumn').firstElementChild===byId('circuitPanel'),'circuit is the first panel in the original right column');
+  check(!app.state().combineMixer && byId('combineMixer').getAttribute('aria-pressed')==='false','separate mixer gates remain the default');
+  const combineBounds=byId('combineMixer').getBoundingClientRect();
+  const firstMixerBounds=document.querySelector('[data-circuit-kind="inverse"] .gateBox').getBoundingClientRect();
+  const lastMixerBounds=document.querySelector('[data-circuit-kind="forward"] .gateBox').getBoundingClientRect();
+  check(combineBounds.bottom<=firstMixerBounds.top && combineBounds.left>=firstMixerBounds.left && combineBounds.right<=lastMixerBounds.right,'Combine sits directly above the mixer gates');
   if (document.documentElement.clientWidth>1100) {
     check(byId('circuitPanel').getBoundingClientRect().left>=byId('plotArea').getBoundingClientRect().right,'circuit sits to the right of the main view');
     check(byId('circuitPanel').getBoundingClientRect().top<40,'circuit sits at the top of the layout');
@@ -88,6 +93,7 @@ try {
   app.startNext();app.advanceTime(2.4);
   close(app.histogram().values[0],.875,'genuine intermediate Hadamard initial amplitude');
   close(app.histogram().values[3],-.125,'genuine negative unmarked Hadamard amplitude retained');
+  check(byId('combineMixer').disabled && !app.setCombineMixer(true),'a partially stepped mixer must finish before grouping changes');
   const beforeInitialFlip=app.histogram().values;
   app.startNext();app.advanceTime(.8);
   close(app.histogram().values[0],0,'initial column crosses zero during Sᵢ');
@@ -99,6 +105,51 @@ try {
   app.startNext();app.advanceTime(2.4);
   close(app.histogram().values[15],-.6875,'marked amplitude retains the explicit global minus');
   app.histogram().values.forEach((value,q)=>close(value,q===15?-.6875:-.1875,'first diffuser matches minus inversion about the mean'));
+
+  const beforeGrouping=app.state();byId('combineMixer').click();
+  check(app.state().combineMixer && byId('combineMixer').getAttribute('aria-pressed')==='true','Combine toggle enables grouping');
+  vector(app.state().amplitudes,beforeGrouping.amplitudes,'grouping keeps the current signed state');
+  check(JSON.stringify(app.state().checkpoints)===JSON.stringify(beforeGrouping.checkpoints),'grouping keeps iteration history');
+  check(byId('circuitStatus').textContent==='3 / 7 operations','operation count reflects a single mixer');
+  check(document.querySelector('[data-circuit-kind="mixer"]').getBoundingClientRect().width>0,'combined block is visible');
+  check(document.querySelector('[data-circuit-kind="inverse"]').getBoundingClientRect().width===0,'three separate gates collapse into one block');
+  app.reset();check(app.state().combineMixer,'reset keeps the selected grouping');
+  app.startNext();app.advanceTime(100);check(app.state().completedOperations===1 && !app.state().busy,'combined mode still stops after preparation');
+  app.startNext();app.advanceTime(100);check(app.state().completedOperations===2 && !app.state().busy,'combined mode still stops after oracle');
+  check(byId('next').textContent==='Apply mixer · H Sᵢ H','next button applies the full mixer');
+  app.startNext();app.advanceTime(2.4);
+  check(app.state().busy && app.state().operationKind==='mixer','combined operation continues past the first H');
+  check(byId('combineMixer').disabled && byId('next').disabled,'grouping and next operation lock while the mixer runs');
+  check(document.querySelector('[data-circuit-kind="mixer"]').classList.contains('active'),'combined gate stays active across internal boundaries');
+  close(app.state().operationProgress,2.4/6.4,'progress covers the full mixer');
+  close(app.histogram().values[0],.875,'first H amplitude is preserved inside combined mixer');
+  close(app.histogram().values[3],-.125,'intermediate negative unmarked amplitude remains visible');
+  const combinedBeforeFlip=app.histogram().values;
+  app.advanceTime(.8);close(app.histogram().values[0],0,'combined initial-state flip crosses zero');
+  close(app.state().amplitudes[1],-.875,'combined initial-state flip retains its imaginary component');
+  vector(app.histogram().values.slice(1),combinedBeforeFlip.slice(1),'other columns stay stationary during combined initial flip');
+  app.togglePause();const pausedMixer=app.state();app.advanceTime(100);
+  vector(app.state().amplitudes,pausedMixer.amplitudes,'pause freezes a combined mixer');app.togglePause();
+  app.advanceTime(.8);close(app.histogram().values[0],-.875,'combined initial-only flip finishes with its negative sign');
+  check(app.state().busy,'combined mixer continues into the final H');
+  app.advanceTime(2.4);
+  check(!app.state().busy && app.state().completedOperations===3,'one operation stops after the final H');
+  vector(app.state().amplitudes,beforeGrouping.amplitudes,'combined first mixer exactly matches separately stepped signed amplitudes');
+  check(byId('circuitStatus').textContent==='3 / 7 operations' && !byId('combineMixer').disabled,'combined checkpoint exposes the next operation and toggle');
+  check(document.querySelector('[data-circuit-kind="mixer"]').classList.contains('complete'),'combined gate completes after all three steps');
+
+  for(const side of [2,3,4,5]) {
+    app.setGridSize(side);app.setInitial(0);app.setTarget(side*side-1);app.reset();
+    check(app.state().combineMixer,'grid changes preserve grouping');
+    check(byId('combinedMixerSymbol').textContent===(side%2?'B Sᵢ B':'H Sᵢ H'),'combined mixer symbol follows the grid');
+    app.runFull();app.advanceTime(1000);
+    const state=app.state(), angle=(2*state.iterations+1)*Math.asin(1/side), sign=(-1)**state.iterations;
+    state.amplitudes.filter((_,k)=>k%2===0).forEach((value,q)=>close(value,sign*(q===state.target?Math.sin(angle):Math.cos(angle)/Math.sqrt(side*side-1)),'combined autoplay preserves final amplitude signs'));
+    check(state.completedOperations===1+2*state.iterations,'combined full search counts each mixer once');
+    check(byId('iterationTrack').querySelectorAll('.complete').length===state.iterations,'combined full search records every amplification round');
+  }
+  app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();byId('combineMixer').click();
+  check(!app.state().combineMixer && byId('circuitStatus').textContent==='0 / 13 operations','toggle restores separate stepping');
   app.reset();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   byId('levelView').click();await frame();
   close(app.cameraState().elevation,0,'level view reaches exactly zero elevation');
@@ -144,6 +195,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: initial-only sign flip, stationary other columns during phase gates, independent Grover core, identical H steps, genuine intermediate negatives, explicit diffuser global sign, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: separate and combined mixers with identical signed amplitudes, Combine toggle placement and state preservation, continuous grouped progress, initial-only sign flip, stationary other columns during phase gates, independent Grover core, identical H steps, genuine intermediate negatives, explicit diffuser global sign, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

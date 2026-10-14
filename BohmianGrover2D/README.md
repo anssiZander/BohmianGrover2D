@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-initial-flip`.
+All active page assets and module imports use `?v=20261014-combined-mixer`.
 
 ## Sequence
 
@@ -85,7 +85,16 @@ during the animation are not required intermediate states of the discrete algori
 
 ## Controls
 
-- **Apply next operation** animates one gate and stops at its checkpoint.
+- **Combine**, directly above the mixer gates in the circuit, groups `H → Sᵢ → H`
+  (or `B → Sᵢ → B`) into one operation. The diagram shows one combined block;
+  one click runs the same three animations without stopping between them. Every
+  intermediate amplitude and sign, the initial-state flip, the final global minus,
+  and the total duration remain exactly the same. The 4×4 search has 7 displayed
+  operations in this mode instead of 13. A single progress bar covers the full mixer.
+  Toggle between modes at an operation boundary outside the mixer; switching keeps
+  the current state and iteration history. Finish an active or partially stepped
+  mixer (or reset) before switching. The setting persists through reset and grid changes.
+- **Apply next operation** animates one operation and stops at its checkpoint.
   **Run full search** starts again from the selected input and runs all gates.
 - **Pause/Resume**, **Reset**, and animation speed control the same clock.
   Space pauses/resumes; R resets when an input or button does not have focus.

@@ -133,3 +133,82 @@ test('all initial/marked pairs retain the Grover success curve with the explicit
     }
   }
 });
+
+test('a combined mixer follows the identical complex animation through both internal boundaries',()=>{
+  for(const side of [2,3,4,5]) for(const elapsed of [0,.6,2.4,3.2,4,5.2,6.4,20]) {
+    const split=new SearchSimulation(side*side-1,0,side), combined=new SearchSimulation(side*side-1,0,side);
+    combined.setCombineMixer(true);
+    for(const sim of [split,combined]) {
+      sim.startNext();sim.advance(100);
+      assert.equal(sim.completed,1,'preparation stops separately');
+      sim.startNext();sim.advance(100);
+      assert.equal(sim.completed,2,'oracle stops before mixer');
+      sim.amplitudes=complexState(side);
+    }
+    const duration=split.model.gates.slice(2,5).reduce((sum,gate)=>sum+gate.duration,0);
+    let remaining=Math.min(elapsed,duration);
+    for(const gate of split.model.gates.slice(2,5)) {
+      if(remaining<=1e-12) break;
+      split.startNext();const step=Math.min(remaining,gate.duration);split.advance(step);remaining-=step;
+    }
+    combined.startNext();combined.advance(elapsed);
+    vector(combined.amplitudes,split.amplitudes,`same animated state at ${elapsed}s on ${side}x${side}`);
+    const state=combined.snapshot(), finished=elapsed>=duration;
+    assert.equal(state.busy,!finished,'only stop after the complete mixer');
+    assert.equal(state.operationKind,'mixer');
+    assert.equal(state.completedOperations,finished?3:2);
+    assert.equal(state.totalOperations,1+2*state.iterations);
+    close(state.operationProgress,Math.min(elapsed/duration,1),'progress across all three gates');
+    close(state.norm,1,'combined animation norm');
+    if(finished) assert.equal(state.kind,'forward','excess time does not begin the next oracle');
+  }
+});
+
+test('grouping can change at mixer boundaries without resetting amplitudes, history or time',()=>{
+  const sim=new SearchSimulation(15,0,4);
+  sim.startNext();sim.advance(100);sim.startNext();sim.advance(100);
+  const before=sim.snapshot();
+  assert.ok(sim.setCombineMixer(true));
+  vector(sim.amplitudes,before.amplitudes);
+  assert.deepEqual(sim.checkpoints,before.checkpoints);assert.equal(sim.time,before.time);
+  sim.startNext();sim.advance(3.2);sim.paused=true;
+  const paused=sim.snapshot();sim.advance(100);
+  vector(sim.amplitudes,paused.amplitudes,'pause freezes the whole combined operation');
+  assert.equal(sim.time,paused.time);assert.equal(sim.setCombineMixer(false),false);
+  sim.paused=false;sim.advance(3.2);
+  assert.equal(sim.active,null);assert.equal(sim.completed,5);
+  const complete=sim.snapshot();assert.ok(sim.setCombineMixer(false));
+  vector(sim.amplitudes,complete.amplitudes);assert.deepEqual(sim.checkpoints,complete.checkpoints);
+  assert.equal(sim.snapshot().completedOperations,5);assert.equal(sim.snapshot().totalOperations,13);
+  assert.ok(sim.setCombineMixer(true));assert.equal(sim.snapshot().completedOperations,3);
+  sim.reset();assert.equal(sim.combineMixer,true);assert.equal(sim.snapshot().completedOperations,0);
+  sim.setGridSize(3);assert.equal(sim.combineMixer,true);
+  sim.setCombineMixer(false);sim.startNext();sim.advance(100);sim.startNext();sim.advance(100);
+  sim.startNext();sim.advance(100);
+  assert.equal(sim.snapshot().canCombineMixer,false,'a partially stepped mixer must finish first');
+  assert.equal(sim.setCombineMixer(true),false);
+  sim.startNext();sim.advance(100);assert.equal(sim.setCombineMixer(true),false);
+  sim.startNext();sim.advance(100);assert.ok(sim.setCombineMixer(true));
+});
+
+test('combined stepping and autoplay retain every sign for all initial and marked pairs',()=>{
+  for(const side of [2,3,4,5]) for(let initial=0;initial<side*side;initial++) for(let target=0;target<side*side;target++) {
+    const split=new SearchSimulation(target,initial,side), combined=new SearchSimulation(target,initial,side);
+    combined.setCombineMixer(true);
+    while(split.startNext()) split.advance(100);
+    let operations=0;
+    while(combined.startNext()) {
+      combined.advance(100);operations++;
+      assert.equal(combined.snapshot().completedOperations,operations);
+    }
+    assert.equal(operations,1+2*combined.model.iterations);
+    vector(combined.amplitudes,split.amplitudes,`signed final state ${side}/${initial}/${target}`);
+    assert.deepEqual(combined.checkpoints,split.checkpoints,'every internal checkpoint is preserved');
+    assert.equal(combined.time,split.time,'total animation duration is preserved');
+    if(initial===0 && target===side*side-1) {
+      combined.runFull();combined.advance(1000);
+      vector(combined.amplitudes,split.amplitudes,'autoplay matches stepping');
+      assert.equal(combined.snapshot().completedOperations,operations);
+    }
+  }
+});

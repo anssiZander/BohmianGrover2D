@@ -112,11 +112,19 @@ export function expectedProbability(iterations, side = 4) {
 export class SearchSimulation {
   constructor(target = 15, initial = 0, side = 4) {
     this.model = gridModel(side); this.target = Math.min(target, this.model.stateCount - 1);
-    this.initial = initial; this.reset();
+    this.initial = initial; this.combineMixer = false; this.reset();
   }
   reset() {
     this.amplitudes = basisState(this.initial, this.model.side); this.completed = 0; this.active = null; this.last = null;
     this.paused = false; this.autoplay = false; this.time = 0; this.checkpoints = [];
+  }
+  get canCombineMixer() {
+    return !this.active && !['inverse', 'reference'].includes(this.last?.kind);
+  }
+  setCombineMixer(value) {
+    if (!this.canCombineMixer || typeof value !== 'boolean' || value === this.combineMixer) return false;
+    this.combineMixer = value;
+    return true;
   }
   setGridSize(side) {
     if (!Number.isInteger(side) || side < 2 || side > 5 || side === this.model.side) return false;
@@ -153,17 +161,31 @@ export class SearchSimulation {
       this.last = gate; this.active = null; this.completed++;
       this.checkpoints.push({step: this.completed, kind: gate.kind, iteration: gate.iteration,
         targetProbability: probabilities(this.amplitudes)[this.target]});
-      if (this.autoplay && this.completed < this.model.gates.length) this.startNext();
+      // Grouping changes only where playback stops. Every gate, amplitude,
+      // animation path, duration and internal checkpoint stays identical.
+      const continueMixer = this.combineMixer && ['inverse', 'reference'].includes(gate.kind);
+      if ((this.autoplay || continueMixer) && this.completed < this.model.gates.length) this.startNext();
       else this.autoplay = false;
     }
   }
   snapshot() {
     const gate = this.active || this.last;
+    const kind = gate?.kind || 'input', progress = this.active?.progress ?? (this.last ? 1 : 0);
+    const operationKind = this.combineMixer && ['inverse', 'reference', 'forward'].includes(kind) ? 'mixer' : kind;
+    let operationProgress = progress;
+    if (operationKind === 'mixer' && this.active) {
+      const start = 2 + 4 * (gate.iteration - 1), mixer = this.model.gates.slice(start, start + 3);
+      const elapsed = mixer.slice(0, gate.index - start).reduce((sum, item) => sum + item.duration, 0) + gate.elapsed;
+      operationProgress = elapsed / mixer.reduce((sum, item) => sum + item.duration, 0);
+    }
+    const completedOperations = this.combineMixer
+      ? this.checkpoints.filter(item => !['inverse', 'reference'].includes(item.kind)).length : this.completed;
     return {side: this.model.side, stateCount: this.model.stateCount, iterations: this.model.iterations,
       mixTime: this.model.mixTime, inverseTime: this.model.inverseTime, target: this.target, initial: this.initial,
       completed: this.completed, busy: !!this.active, paused: this.paused, time: this.time,
-      kind: gate?.kind || 'input', iteration: gate?.iteration || 0,
-      progress: this.active?.progress ?? (this.last ? 1 : 0), norm: normSquared(this.amplitudes),
+      kind, iteration: gate?.iteration || 0, progress, norm: normSquared(this.amplitudes),
+      combineMixer: this.combineMixer, canCombineMixer: this.canCombineMixer, operationKind, operationProgress,
+      completedOperations, totalOperations: this.combineMixer ? 1 + 2 * this.model.iterations : this.model.gates.length,
       probabilities: Array.from(probabilities(this.amplitudes)), amplitudes: Array.from(this.amplitudes),
       checkpoints: this.checkpoints.map(item => ({...item}))};
   }

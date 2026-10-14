@@ -6,7 +6,7 @@ if (new Set(ids).size !== ids.length) throw new Error('Duplicate HTML IDs');
 const domText = main.slice(main.indexOf('Object.fromEntries(['), main.indexOf('].map(id =>'));
 const required = [...domText.matchAll(/'([^']+)'/g)].map(match => match[1]);
 for (const id of required) if (!ids.includes(id)) throw new Error(`Missing DOM node #${id}`);
-for (const kind of ['prepare', 'oracle', 'inverse', 'reference', 'forward']) {
+for (const kind of ['prepare', 'oracle', 'inverse', 'reference', 'forward', 'mixer']) {
   if (!html.includes(`data-circuit-kind="${kind}"`)) throw new Error(`Missing circuit gate ${kind}`);
 }
 const release = html.match(/src="\.\/main\.js\?v=([^"]+)"/)?.[1];
@@ -23,5 +23,5 @@ for (const file of ['main.js', 'histogram-renderer.js', 'ordinary-core.js']) {
 }
 if (/multiregion-core|flow-renderer|probability-flow|grover-geometry|loadShader/.test(main + await read('ordinary-core.js'))) throw new Error('Histogram must not load physics modules');
 if (!recording.includes('window.BohmianGrover2D') || !recording.includes('ordinary-grover-${side}x${side}-')) throw new Error('Missing recording bridge or filename');
-console.log(`${required.length} DOM references and all five circuit gates present; HTML IDs unique.`);
+console.log(`${required.length} DOM references, all five gates and the combined mixer present; HTML IDs unique.`);
 console.log('Histogram assets/versioning valid; physics modules excluded; recording bridge intact.');
