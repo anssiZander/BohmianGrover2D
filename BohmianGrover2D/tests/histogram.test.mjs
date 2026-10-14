@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cameraFor, columnCenter, columnHeight, columnValues, project, screenRay, rayBox, phaseColor, DEFAULT_VIEW } from '../histogram-renderer.js';
-import { SearchSimulation } from '../multiregion-core.js';
+import { SearchSimulation } from '../ordinary-core.js';
 
 test('the signed vertical scale remains linear and fixed across values and grid sizes', () => {
   for (const side of [2,3,4,5]) {

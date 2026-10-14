@@ -15,13 +15,13 @@ for (const [, path] of html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)) {
   if (!path.endsWith(`?v=${release}`)) throw new Error(`Unversioned page asset: ${path}`);
   await read(path.split('?')[0]);
 }
-for (const file of ['main.js', 'histogram-renderer.js', 'multiregion-core.js']) {
+for (const file of ['main.js', 'histogram-renderer.js', 'ordinary-core.js']) {
   for (const [, path] of (await read(file)).matchAll(/from ['"](\.\/[^'"]+)['"]/g)) {
     if (!path.endsWith(`?v=${release}`)) throw new Error(`Mismatched import in ${file}: ${path}`);
     await read(path.slice(2).split('?')[0]);
   }
 }
-if (/flow-renderer|probability-flow|grover-geometry|loadShader/.test(main)) throw new Error('Histogram must not load physics renderers');
+if (/multiregion-core|flow-renderer|probability-flow|grover-geometry|loadShader/.test(main + await read('ordinary-core.js'))) throw new Error('Histogram must not load physics modules');
 if (!recording.includes('window.BohmianGrover2D') || !recording.includes('ordinary-grover-${side}x${side}-')) throw new Error('Missing recording bridge or filename');
 console.log(`${required.length} DOM references and all five circuit gates present; HTML IDs unique.`);
-console.log('Histogram assets/versioning valid; physics renderers excluded; recording bridge intact.');
+console.log('Histogram assets/versioning valid; physics modules excluded; recording bridge intact.');

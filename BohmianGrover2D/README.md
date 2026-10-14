@@ -18,10 +18,10 @@ direction: a zero real column is not necessarily a zero probability. Both comple
 components and the probability remain available in the inspector. Phase colors
 show the full complex amplitude's phase in every view.
 
-This branch starts from `MultiRegion` and reuses its `multiregion-core.js`
-**without modifications**. It preserves the exact operations, continuous gate
-interpolations, initial/marked-state choices, and stopping points. The other
-branches, including `main`, are independent.
+The algorithm runs in an independent **`ordinary-core.js` state-vector model**.
+It has no dependencies on spatial waves, particles, box evolution, or any of the
+physics branches. Gate endpoints come directly from finite-dimensional matrices.
+The other branches, including `main`, are independent.
 
 ## Run
 
@@ -33,35 +33,51 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-amplitudes2`.
+All active page assets and module imports use `?v=20261014-textbook`.
 
 ## Sequence
 
 1. Begin with one column at amplitude +1 in the chosen initial state `|i⟩`.
 2. Prepare with `H`: every amplitude has magnitude `1/N` on an N×N grid.
 3. Apply the oracle `Oω`, flipping only the marked amplitude's phase.
-4. Apply `H†`, the inverse preparation.
-5. Apply `Sᵢ`, flipping the initial-state amplitude's phase.
-6. Apply `H`, completing one amplification round. Repeat steps 3–6.
+4. Apply `H`, the same Hadamard, since `H† = H`.
+5. Apply `Rᵢ = 2|i⟩⟨i| − I`, keeping the initial component and reversing the others.
+6. Apply `H` again, completing one amplification round. Repeat steps 3–6.
 
-The diffuser `H Sᵢ H†` differs from the conventional Grover reflection only by
-an overall minus sign. It has the same probabilities, but an amplified column
-can point down. The display shows the actual signed components; it does not
-silently remove a common sign or phase at checkpoints. Preparation runs once;
+The diffuser is exactly `D = H Rᵢ H = 2|sᵢ⟩⟨sᵢ| − I`, where `|sᵢ⟩ = H|i⟩`.
+With the all-zero input, this is the textbook inversion about the mean,
+`a → 2 × mean − a`. There is no extra overall minus sign after each round.
+The reference convention is explicit: `Rᵢ = −Sᵢ`, where `Sᵢ` would flip only the
+initial state. See the [Grover operator definition in IBM's documentation](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.grover_operator).
+
+The display shows every actual sign, including negative unmarked amplitudes
+inside the diffuser. For 4×4 with initial `0000` and marked `1111`, the first
+post-oracle H gives +0.875 in `0000` and ±0.125 in the other states. These are
+ordinary Hadamard interference, independent of any wave model. After the full
+first diffuser, the marked amplitude is +0.6875 and every unmarked amplitude is
++0.1875. After round 3 they are +0.98046875 and −0.05078125 respectively: even
+the textbook convention does not keep every unmarked amplitude positive forever.
+
+Preparation runs once;
 the remaining four operations repeat 1, 2, 3, or 3 times for 2×2, 3×3, 4×4,
 or 5×5 respectively. For the default 4×4 grid, the marked probability is 6.25%
 after preparation and 47.265625%, 90.844727%, and 96.131897% after each round.
 
 On 2×2 and 4×4, `H` is the usual tensor-product qubit Hadamard. The 3×3 and
-5×5 options preserve the original Hermitian complex balanced mixer,
+5×5 options use a Hermitian complex balanced mixer,
 `B[(x,y),(u,v)] = exp(2πi(xv−yu)/N)/N`, labelled **B** to distinguish these
-non-qubit grids. `B† = B` and `B² = I`. Every basis input prepares equal
+non-qubit grids as generalized amplitude amplification. `B† = B` and `B² = I`.
+Every basis input prepares equal
 probabilities; nonzero initial coordinates can produce different phases.
 
 Labels are binary for 2×2/4×4 and `|x,y⟩` for odd grids. The state index is
 `q = N*x + y`, matching the original implementation. The animation between
-gate endpoints uses the original smooth unitary evolution, not a linear
-interpolation of displayed column heights.
+gate endpoints is a display choice, not a physical simulation or additional
+Grover steps. For any reflection gate G, it uses
+`U(p) = (I+G)/2 + exp(−iπp)(I−G)/2` for progress p from 0 to 1. This preserves
+normalization and uses the exact gate matrix at the endpoint. All H operations
+use the same animation, including the first step of the diffuser. Complex values
+during the animation are not required intermediate states of the discrete algorithm.
 
 ## Controls
 
@@ -112,7 +128,8 @@ node --experimental-default-type=module BohmianGrover2D/tests/static-check.mjs
 
 Serve the app and open `tests/histogram-browser-check.html` for the browser
 checks. They use the actual production UI and renderer, including all four
-grid sizes, gate checkpoints, signed oracle/reference flips with invariant
+grid sizes, gate checkpoints, the oracle's selected flip and Rᵢ's complementary
+flips with invariant
 probabilities, arbitrary/coincident initial and marked states, autoplay,
 complex-component views, the circuit layout, picking around a full orbit,
 drag/pinch, zero-height and below-plane cameras, keyboard/zoom/reset controls,
@@ -120,7 +137,12 @@ and the recording clock. The page is left at the 4×4 oracle checkpoint. The
 `#histogram-test-report` element contains the result, including a
 `data-status="passed"` attribute on success.
 
+`tests/ordinary-core.test.mjs` checks the qubit mixer against an independent dense
+Walsh matrix, all intermediate 4×4 signs, the exact diffuser against inversion
+about the mean, complex reflection identities, and Grover probabilities for
+every initial/marked pair on all four grids.
+
 The inherited physics modules and their numerical tests remain available as
-reference, but the histogram page does not load their renderers or shaders.
+reference, but the histogram page does not load their core, renderers, or shaders.
 Older wave/flow/geometry browser fixtures belong to the `MultiRegion` UI;
 use `histogram-browser-check.html` on this branch.

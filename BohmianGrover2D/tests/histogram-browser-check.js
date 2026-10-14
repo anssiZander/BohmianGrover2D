@@ -33,6 +33,8 @@ try {
     close(app.state().probabilities[pair[0]],1,'selected initial has unit probability');
     check(app.state().iterations===expectedIterations,'correct stopping iteration');
     check(byId('prepareSymbol').textContent===(side%2?'B':'H'),'qubit versus odd-grid mixer labelled accurately');
+    check(byId('inverseSymbol').textContent===byId('prepareSymbol').textContent && byId('forwardSymbol').textContent===byId('prepareSymbol').textContent,'all mixer steps show the same self-inverse gate');
+    check(byId('diffuserLabel').textContent.includes('Rᵢ'),'textbook reference reflection shown explicitly');
     const kinds = ['prepare',...Array.from({length:expectedIterations},()=>['oracle','inverse','reference','forward']).flat()];
     for (const [index,kind] of kinds.entries()) {
       const before = app.state(), oldHeights=app.histogram().heights;
@@ -54,11 +56,10 @@ try {
       vector(histogram.heights.map(v=>v/histogram.maximum),state.amplitudes.filter((_,i)=>i%2===0),'column heights are signed real amplitudes');
       if (kind==='prepare') state.probabilities.forEach(p=>close(p,1/count,'balanced preparation'));
       if (['oracle','reference'].includes(kind)) {
-        const q=kind==='oracle'?state.target:state.initial;
-        vector(histogram.heights,oldHeights.map((v,i)=>i===q?-v:v),'phase pulse flips exactly the selected signed column');
+        const flips = q => kind==='oracle' ? q===state.target : q!==state.initial;
+        vector(histogram.heights,oldHeights.map((v,q)=>flips(q)?-v:v),'oracle flips the target; Rᵢ flips all except the initial state');
         vector(state.probabilities,before.probabilities,'phase pulse keeps probabilities fixed at endpoint');
-        close(state.amplitudes[2*q],-before.amplitudes[2*q],'phase gate reverses real component');
-        close(state.amplitudes[2*q+1],-before.amplitudes[2*q+1],'phase gate reverses imaginary component');
+        vector(state.amplitudes,before.amplitudes.map((v,k)=>flips(Math.floor(k/2))?-v:v),'reflection has the exact intended signs in both components');
       }
       if (kind==='forward') {
         const expected=Math.sin((2*state.iteration+1)*Math.asin(1/side))**2;
@@ -82,6 +83,13 @@ try {
   vector(app.state().amplitudes,oracleState.amplitudes,'changing the displayed component never changes the algorithm');
   byId('columnView').value='real';byId('columnView').dispatchEvent(new Event('change'));
   check(app.histogram().view==='real','column-view selector restores signed amplitudes');
+  app.startNext();app.advanceTime(2.4);
+  close(app.histogram().values[0],.875,'genuine intermediate Hadamard initial amplitude');
+  close(app.histogram().values[3],-.125,'genuine negative unmarked Hadamard amplitude retained');
+  app.startNext();app.advanceTime(1.6);app.startNext();app.advanceTime(2.4);
+  close(app.histogram().values[15],.6875,'textbook marked amplitude has no extra global minus');
+  app.histogram().values.forEach((value,q)=>close(value,q===15?.6875:.1875,'first diffuser matches inversion about the mean'));
+  app.reset();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   byId('levelView').click();await frame();
   close(app.cameraState().elevation,0,'level view reaches exactly zero elevation');
   check(byId('elevationValue').textContent==='0°','elevation readout displays zero');
@@ -125,7 +133,7 @@ try {
   app.togglePause();const frozen=app.state();app.renderRecordingFrame({fps:60});vector(app.state().amplitudes,frozen.amplitudes,'recording respects pause');
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
-  check(!performance.getEntriesByType('resource').some(entry=>/flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: signed amplitude flips, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, restored circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: independent Grover core, identical H steps, genuine intermediate negatives, textbook diffuser signs, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}
