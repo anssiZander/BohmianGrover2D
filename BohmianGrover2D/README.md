@@ -33,7 +33,7 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-previous-step`.
+All active page assets and module imports use `?v=20261014-mean-plane`.
 
 ## Sequence
 
@@ -89,6 +89,19 @@ Complex values during the animation are not required intermediate states of the 
 
 ## Controls
 
+- **Mean plane / mixer reference** is on by default in the real and imaginary
+  amplitude views. For the all-zero input, a translucent gold plane shows the
+  mean of the displayed amplitude component. After the oracle, a dashed level
+  marks the output mean `−μ` and an arrow spans the full displacement `−2μ`.
+  These guides retain the post-oracle input reference through the complete mixer,
+  including all three separate gates, and at its endpoint. They describe the
+  complete operation; internal Hadamard states can differ from that translation.
+  The first 4×4 input mean is `+0.21875`, giving a shift of `−0.43750`.
+  The diagnostics show these values precisely. With a nonzero initial state,
+  preparation has varying phases, so per-column reference tiles instead show
+  `p_j = s_j⟨s|a⟩`, with exact full-mixer displacement `−2p_j`. The hover inspector
+  selects the reference reported in diagnostics. Probability view hides the guide:
+  the mixer acts on amplitudes, not their squared magnitudes.
 - **Combine**, directly above the mixer gates in the circuit, shows `H Sᵢ H`
   (or `B Sᵢ B`) as one operation. The columns interpolate directly from the
   post-oracle state to the complete mixer result in one 2.4-second animation

@@ -93,11 +93,12 @@ export class HistogramRenderer {
       return result;
     };
     const vs = shader(gl.VERTEX_SHADER, 'attribute vec3 position; attribute vec3 color; uniform mat4 matrix; varying vec3 tint; void main(){ gl_Position=matrix*vec4(position,1.0); tint=color; }');
-    const fs = shader(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec3 tint; void main(){ gl_FragColor=vec4(tint,1.0); }');
+    const fs = shader(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec3 tint; uniform float opacity; void main(){ gl_FragColor=vec4(tint,opacity); }');
     this.program = gl.createProgram(); gl.attachShader(this.program, vs); gl.attachShader(this.program, fs); gl.linkProgram(this.program);
     if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.program));
     gl.deleteShader(vs); gl.deleteShader(fs);
     this.buffer = gl.createBuffer(); this.matrixUniform = gl.getUniformLocation(this.program, 'matrix');
+    this.opacityUniform = gl.getUniformLocation(this.program, 'opacity');
     this.positionAttribute = gl.getAttribLocation(this.program, 'position'); this.colorAttribute = gl.getAttribLocation(this.program, 'color');
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
   }
@@ -155,7 +156,7 @@ export class HistogramRenderer {
     const ax = (Math.cos(this.view.yaw) >= 0 ? -1 : 1) * (half + .22);
     const az = (Math.sin(this.view.yaw) >= 0 ? 1 : -1) * (half + .22);
     line([ax,columnHeight(isProbability ? 0 : -1,side),az],[ax,columnHeight(1,side),az],[.32,.43,.56]);
-    this.renderGeometry(triangles, lines);
+    this.renderGeometry(triangles, lines, this.meanGeometry(data.meanGuide, side));
     const ctx = this.context; ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
     ctx.drawImage(this.surface,0,0,this.width,this.height);
     ctx.font = '10px "Segoe UI", sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
@@ -172,6 +173,7 @@ export class HistogramRenderer {
       const xp = project([i-(side-1)/2,0,frontZ],this.camera), yp = project([frontX,0,(side-1)/2-i],this.camera);
       ctx.fillStyle = '#91abc6'; ctx.fillText(`x=${i}`,xp.x,xp.y+12); ctx.fillText(`y=${i}`,yp.x,yp.y+12);
     }
+    const occupied = this.drawMeanLabels(data.meanGuide, side, ax, az);
     const candidates = [];
     if (options.valueLabels !== false) for (let q = 0; q < ps.length; q++) {
       if (ps[q] < 1e-6 && q !== target && q !== initial) continue;
@@ -181,7 +183,6 @@ export class HistogramRenderer {
       candidates.push({ q, pos, priority: q === this.hover ? 3 : q === target ? 2 : q === initial ? 1 : 0 });
     }
     candidates.sort((a,b) => b.priority-a.priority || a.pos.depth-b.pos.depth);
-    const occupied = [];
     for (const {q,pos} of candidates) {
       const text = isProbability ? `${(ps[q]*100).toFixed(1)}%` : formatAmplitude(values[q]);
       ctx.font = '11px "Segoe UI", sans-serif';
@@ -198,10 +199,84 @@ export class HistogramRenderer {
     ctx.textAlign = 'right'; ctx.fillStyle = '#ffb4c2';
     ctx.fillText(`P(marked) ${(100*ps[target]).toFixed(2)}%`,this.width-12,this.height-12);
   }
-  renderGeometry(triangles, lines) {
+  meanGeometry(guide, side) {
+    const triangles = [], lines = [];
+    if (!guide?.visible) return {triangles, lines};
+    const gold = [1,.78,.35], violet = [.64,.73,1];
+    const vertex = (out, point, color) => out.push(...point, ...color);
+    const line = (a, b, color, dashed = false) => {
+      const steps = dashed ? Math.max(2, Math.ceil(Math.hypot(...a.map((v,i) => v-b[i])) / .12)) : 1;
+      for (let t = 0; t < steps; t += dashed ? 2 : 1) {
+        vertex(lines, a.map((v,i) => v + (b[i]-v)*t/steps), color);
+        vertex(lines, a.map((v,i) => v + (b[i]-v)*(t+1)/steps), color);
+      }
+    };
+    const plane = (x, z, radius, value, output = false) => {
+      const y = columnHeight(value, side), color = output ? violet : gold;
+      const points = [[x-radius,y,z-radius],[x+radius,y,z-radius],[x+radius,y,z+radius],[x-radius,y,z+radius]];
+      if (!output) for (const k of [0,1,2,0,2,3]) vertex(triangles, points[k], color);
+      for (let k = 0; k < 4; k++) line(points[k], points[(k+1)%4], color, output);
+      if (guide.uniform && !output) for (let k = 1; k < side; k++) {
+        const v = k-side/2, h = side/2;
+        line([-h,y,v],[h,y,v],gold.map(c => c*.6));
+        line([v,y,-h],[v,y,h],gold.map(c => c*.6));
+      }
+    };
+    if (guide.uniform) {
+      plane(0,0,side/2+.08,guide.values[0]);
+      if (guide.showResult) plane(0,0,side/2+.08,guide.outputValues[0],true);
+    } else for (let q = 0; q < side*side; q++) {
+      const [x,,z] = columnCenter(q,side);
+      plane(x,z,.43,guide.values[q]);
+      if (guide.showResult) plane(x,z,.43,guide.outputValues[q],true);
+    }
+    return {triangles, lines};
+  }
+  drawMeanLabels(guide, side, ax, az) {
+    const occupied = [];
+    if (!guide?.visible) return occupied;
+    const ctx = this.context, gold = '#ffd783', violet = '#b2c7ff';
+    const label = (value, x, y, color, align = 'left') => {
+      ctx.font = '10px "Segoe UI", sans-serif';
+      const width = ctx.measureText(value).width + 12;
+      const rect = {x:clamp(align === 'right' ? x-width : x,4,this.width-width-4),y:clamp(y,40,this.height-42),w:width,h:21};
+      ctx.fillStyle = '#061124e8'; ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
+      ctx.fillText(value,rect.x+6,rect.y+10); occupied.push(rect);
+    };
+    if (guide.uniform) {
+      const mean = guide.values[0], a = project([ax,columnHeight(mean,side),az],this.camera);
+      label(`${guide.showResult ? 'Input ' : ''}μ ${formatAmplitude(mean)}`,a.x+7,a.y-24,gold);
+      if (guide.showResult) {
+        const b = project([ax,columnHeight(-mean,side),az],this.camera);
+        label(`After −μ ${formatAmplitude(-mean)}`,b.x+7,b.y+(Math.abs(a.y-b.y)<27?2:-10),violet);
+        // The arrow spans μ to −μ, a displacement of −2μ. It is a guide to
+        // the full operation, including while the separate gates are shown.
+        const start = project([-ax,columnHeight(mean,side),-az],this.camera);
+        const end = project([-ax,columnHeight(-mean,side),-az],this.camera);
+        if (Math.hypot(start.x-end.x,start.y-end.y)>15) {
+          const angle = Math.atan2(end.y-start.y,end.x-start.x);
+          ctx.strokeStyle = gold; ctx.lineWidth = 1.5; ctx.beginPath();
+          ctx.moveTo(start.x,start.y);ctx.lineTo(end.x,end.y);
+          for (const turn of [-.5,.5]) {ctx.moveTo(end.x,end.y);ctx.lineTo(end.x-7*Math.cos(angle+turn),end.y-7*Math.sin(angle+turn));}
+          ctx.stroke();ctx.lineWidth = 1;
+          label(`Δ ${formatAmplitude(-2*mean)}`,(start.x+end.x)/2-7,(start.y+end.y)/2-10,gold,'right');
+        }
+      }
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '10px "Segoe UI", sans-serif';
+    ctx.fillStyle = gold;
+    const caption = guide.uniform ? (guide.showResult ? 'FULL MIXER  a′ = a − 2μ' : 'MEAN AMPLITUDE  μ') : 'MIXER REFERENCE  pⱼ = sⱼ⟨s|a⟩';
+    ctx.fillText(caption,12,48);
+    occupied.push({x:8,y:38,w:ctx.measureText(caption).width+8,h:20});
+    ctx.textAlign = 'center';
+    return occupied;
+  }
+  renderGeometry(triangles, lines, guide) {
     const gl = this.gl; gl.viewport(0,0,this.surface.width,this.surface.height);
     gl.clearColor(.004,.027,.063,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program); gl.uniformMatrix4fv(this.matrixUniform,false,this.camera.matrix);
+    gl.uniform1f(this.opacityUniform,1);
     gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
     gl.enableVertexAttribArray(this.positionAttribute); gl.vertexAttribPointer(this.positionAttribute,3,gl.FLOAT,false,24,0);
     gl.enableVertexAttribArray(this.colorAttribute); gl.vertexAttribPointer(this.colorAttribute,3,gl.FLOAT,false,24,12);
@@ -209,6 +284,17 @@ export class HistogramRenderer {
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1,1);
     gl.drawArrays(gl.TRIANGLES,0,triangles.length/6); gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.drawArrays(gl.LINES,triangles.length/6,lines.length/6);
+    if (guide.triangles.length || guide.lines.length) {
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([...guide.triangles,...guide.lines]),gl.DYNAMIC_DRAW);
+      // Reference surfaces are translucent and do not intercept picking or
+      // write depth, so columns on either side of zero remain visible.
+      gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
+      gl.uniform1f(this.opacityUniform,.09);
+      gl.drawArrays(gl.TRIANGLES,0,guide.triangles.length/6);
+      gl.uniform1f(this.opacityUniform,.9);
+      gl.drawArrays(gl.LINES,guide.triangles.length/6,guide.lines.length/6);
+      gl.depthMask(true);gl.disable(gl.BLEND);gl.uniform1f(this.opacityUniform,1);
+    }
   }
   hitTest(x,y) {
     if (!this.data || !this.camera) return -1;

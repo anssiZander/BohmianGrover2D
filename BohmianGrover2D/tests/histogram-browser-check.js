@@ -219,8 +219,47 @@ try {
     check(!restored.busy && !restored.paused && restored.completed===2,'Previous step cancels the paused operation at its starting checkpoint');
     app.advanceTime(1000);vector(app.state().amplitudes,restored.amplitudes,'going back stops autoplay');
   }
-  app.reset();app.setCombineMixer(false);
-  app.reset();app.startNext();app.advanceTime(.6);app.togglePause();app.setGridSize(5);
+  for(const combine of [false,true]) {
+    app.reset();app.setCombineMixer(combine);app.setInitial(0);app.setTarget(15);app.setColumnView('real');
+    app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
+    const input=app.state().amplitudes, guide=app.histogram().meanGuide;
+    check(guide.visible && guide.uniform && guide.showResult,'mean and output planes appear after oracle');
+    guide.values.forEach(v=>close(v,.21875,'post-oracle mean plane'));
+    guide.outputValues.forEach(v=>close(v,-.21875,'full-mixer output mean plane'));
+    guide.shifts.forEach(v=>close(v,-.4375,'twice-mean displacement'));
+    check(byId('meanInputValue').textContent==='+0.21875' && byId('meanShiftValue').textContent==='−0.43750','precise input and shift displayed');
+    const withGuide=checksum();byId('meanPlane').click();
+    check(!app.histogram().meanGuide.visible && byId('meanGuidePanel').hidden,'toggle hides the planes and diagnostics');
+    check(checksum()!==withGuide,'mean guide changes the actual rendered canvas');
+    vector(app.state().amplitudes,input,'guide toggle does not change amplitudes');
+    byId('meanPlane').click();
+    app.startNext();app.advanceTime(.6);
+    vector(app.histogram().meanGuide.values,guide.values,'reference stays fixed during active mixer');
+    app.togglePause();const pausedGuide=app.histogram().meanGuide;app.advanceTime(10);
+    vector(app.histogram().meanGuide.values,pausedGuide.values,'pause retains fixed mean');app.togglePause();
+    app.advanceTime(100);
+    while(app.state().completed<5) {app.startNext();app.advanceTime(100);}
+    vector(app.histogram().meanGuide.values,guide.values,'input mean remains visible at completed mixer');
+    app.histogram().values.forEach((v,q)=>close(v,input[2*q]+guide.shifts[q],'column endpoints follow displayed shift'));
+    byId('previous').click();vector(app.histogram().meanGuide.values,guide.values,'previous step restores correct reference');
+    app.setColumnView('imaginary');app.histogram().meanGuide.values.forEach(v=>close(v,0,'imaginary view uses imaginary reference'));
+    app.setColumnView('probability');check(!app.histogram().meanGuide.visible && byId('meanPlane').disabled && byId('meanGuidePanel').hidden,'probability view never shows an amplitude mean as probability');
+    app.setColumnView('real');check(app.histogram().meanGuide.visible && !byId('meanPlane').disabled,'return to amplitudes restores mean guide');
+  }
+  for(const side of [3,4,5]) {
+    app.setGridSize(side);app.setInitial(side*side-1);app.setTarget(side*side-2);app.reset();app.setCombineMixer(true);app.setColumnView('real');
+    app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
+    const input=app.state().amplitudes, reference=app.histogram().meanGuide;
+    check(!reference.uniform && reference.showResult && byId('meanGuideTitle').textContent==='Mixer reference levels','nonzero inputs use phase-aware tiles');
+    app.setColumnView('imaginary');const imag=app.histogram().meanGuide;
+    app.startNext();app.advanceTime(2.4);
+    app.state().amplitudes.forEach((v,k)=>close(v,input[k]+(k%2?imag:reference).shifts[Math.floor(k/2)],'complex endpoint matches phase-aware per-column displacement'));
+  }
+  app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.setCombineMixer(false);app.setColumnView('real');
+  app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(.8);app.setColumnView('imaginary');
+  app.histogram().meanGuide.values.forEach(v=>close(v,-.25/16,'live guide follows complex mean during oracle'));
+  app.reset();app.setColumnView('real');
+  app.startNext();app.advanceTime(.6);app.togglePause();app.setGridSize(5);
   check(!app.state().busy && !app.state().paused && app.state().completed===0,'size change resets an in-progress paused search');
   check(app.state().checkpoints.length===0,'size change clears history');
   app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.setSpeed(2);app.startNext();app.renderRecordingFrame({fps:60});
@@ -229,6 +268,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: mean planes and exact mixer shifts, fixed references through both mixer modes and rewind, phase-aware tiles and complex-component means, guide visibility and probability-view exclusion, direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

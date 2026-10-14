@@ -74,6 +74,18 @@ export function referenceFlip(state, initial = 0) {
   return state.map((value, k) => Math.floor(k / 2) === initial ? -value : value);
 }
 
+// The component subtracted twice by the complete mixer: |s_i><s_i|a>.
+// With the all-zero input every entry is the ordinary complex mean of a.
+export function mixerProjection(state, initial = 0) {
+  const s = hadamard(basisState(initial, Math.sqrt(state.length / 2)));
+  let re = 0, im = 0;
+  for (let k = 0; k < state.length; k += 2) {
+    re += s[k] * state[k] + s[k + 1] * state[k + 1];
+    im += s[k] * state[k + 1] - s[k + 1] * state[k];
+  }
+  return s.map((value, k) => k % 2 ? s[k - 1] * im + value * re : value * re - s[k + 1] * im);
+}
+
 // A display choice between exact gate endpoints, not extra Grover operations.
 // For a Hermitian reflection G, rotate its -1 eigenspace through exp(-i*pi*p):
 // U(p) = (I+G)/2 + exp(-i*pi*p)(I-G)/2. This keeps total probability at 1.
@@ -119,6 +131,7 @@ export class SearchSimulation {
   }
   reset() {
     this.amplitudes = basisState(this.initial, this.model.side); this.completed = 0; this.active = null; this.last = null;
+    this.mixerInput = null;
     this.paused = false; this.autoplay = false; this.time = 0; this.checkpoints = [];
   }
   get canCombineMixer() {
@@ -159,6 +172,10 @@ export class SearchSimulation {
   startNext() {
     if (this.active || this.completed >= this.model.gates.length) return false;
     const next = this.model.gates[this.completed];
+    // Retain the post-oracle reference through all three gates and their endpoint.
+    // Previous step reconstructs it along with the other exact checkpoints.
+    if (next.kind === 'inverse') this.mixerInput = Float64Array.from(this.amplitudes);
+    else if (next.kind === 'oracle') this.mixerInput = null;
     const gate = this.combineMixer && next.kind === 'inverse'
       ? {...next, kind: 'mixer', name: `Combined mixer · ${next.symbol} Sᵢ ${next.symbol}`} : next;
     this.active = {...gate, index: this.completed, elapsed: 0, progress: 0,
@@ -197,6 +214,7 @@ export class SearchSimulation {
       combineMixer: this.combineMixer, canCombineMixer: this.canCombineMixer, operationKind, operationProgress: progress,
       completedOperations, totalOperations: this.combineMixer ? 1 + 2 * this.model.iterations : this.model.gates.length,
       probabilities: Array.from(probabilities(this.amplitudes)), amplitudes: Array.from(this.amplitudes),
+      mixerInput: this.mixerInput ? Array.from(this.mixerInput) : null,
       checkpoints: this.checkpoints.map(item => ({...item}))};
   }
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {basisState, gridModel, hadamard, oracle, referenceFlip, evolveGate,
+import {basisState, gridModel, hadamard, oracle, referenceFlip, evolveGate, mixerProjection,
   normSquared, probabilities, SearchSimulation} from '../ordinary-core.js';
 
 const close = (a,b,message='values agree') => assert.ok(Math.abs(a-b)<2e-11,`${message}: ${a} vs ${b}`);
@@ -9,6 +9,40 @@ const vector = (a,b,message='vectors agree') => {
   a.forEach((value,q)=>close(value,b[q],`${message} at ${q}`));
 };
 const parity = q => q.toString(2).replaceAll('0','').length % 2;
+
+test('the displayed reference predicts the exact full-mixer displacement, including complex and nonzero inputs', () => {
+  for (const side of [2,3,4,5]) for (let initial=0;initial<side*side;initial++) {
+    const state=complexState(side), reference=mixerProjection(state,initial);
+    const result=hadamard(referenceFlip(hadamard(state),initial));
+    vector(state.map((v,k)=>v-2*reference[k]),result,'reference displacement equals the three-gate operator');
+    if(initial===0) {
+      const mean=[0,1].map(part=>state.filter((_,k)=>k%2===part).reduce((sum,v)=>sum+v,0)/(side*side));
+      reference.forEach((v,k)=>close(v,mean[k%2],'uniform reference is the arithmetic complex mean'));
+    }
+  }
+});
+
+test('post-oracle reference stays fixed through the mixer and is restored by Previous step', () => {
+  for(const combine of [false,true]) {
+    const sim=new SearchSimulation(15,0,4);sim.setCombineMixer(combine);
+    sim.startNext();sim.advance(2.4);sim.startNext();sim.advance(1.6);
+    const input=Array.from(sim.amplitudes);
+    mixerProjection(input).forEach((v,k)=>close(v,k%2?0:.21875,'first input mean'));
+    sim.startNext();sim.advance(.8);
+    vector(sim.snapshot().mixerInput,input,'input frozen during first gate');
+    sim.advance(100);
+    while(sim.completed<5) {sim.startNext();sim.advance(100);vector(sim.snapshot().mixerInput,input);}
+    vector(sim.snapshot().mixerInput,input,'input retained at full endpoint');
+    sim.amplitudes.forEach((v,k)=>close(v,input[k]-(k%2?0:.4375),'every column shifts by minus twice the mean'));
+    const detached=sim.snapshot();detached.mixerInput[0]=99;
+    vector(sim.snapshot().mixerInput,input,'snapshot does not expose mutable reference storage');
+    sim.startNext();sim.advance(.4);assert.equal(sim.snapshot().mixerInput,null,'new oracle releases old reference');
+    sim.previousStep();vector(sim.snapshot().mixerInput,input,'back from oracle restores previous mixer input');
+    sim.previousStep();
+    if(combine) assert.equal(sim.snapshot().mixerInput,null);else vector(sim.snapshot().mixerInput,input);
+    sim.reset();assert.equal(sim.snapshot().mixerInput,null);
+  }
+});
 
 // Independent dense definition, rather than the production butterfly transform.
 function denseWalsh(state) {

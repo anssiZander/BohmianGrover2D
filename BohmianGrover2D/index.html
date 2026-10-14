@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Ordinary Grover · 4×4</title>
   <link rel="icon" href="data:,"/>
-  <link rel="stylesheet" href="./styles.css?v=20261014-previous-step"/>
+  <link rel="stylesheet" href="./styles.css?v=20261014-mean-plane"/>
 </head>
 <body>
 <div id="wrap">
@@ -24,6 +24,7 @@
       <p class="note" id="columnHelp">Positive amplitudes rise above zero; negative amplitudes extend below it.</p>
       <div class="row"><label for="speed">Gate speed</label><input id="speed" type="range" min="0.25" max="3" step="0.25" value="1"/><span id="speedValue" class="val">1.0×</span></div>
       <div class="row checks"><label><input id="phaseColors" type="checkbox" checked/> Phase colors</label><label><input id="valueLabels" type="checkbox" checked/> Value labels</label></div>
+      <div class="row checks"><label><input id="meanPlane" type="checkbox" checked/> Mean plane / mixer reference</label></div>
       <div class="section">Initial &amp; marked states</div>
       <div class="row"><label for="initialState">Initial</label><select id="initialState"></select></div>
       <div class="row"><label for="targetState">Marked</label><select id="targetState"></select></div>
@@ -82,6 +83,13 @@
       <div class="head"><h3>State diagnostics</h3></div>
       <div class="metrics"><div>Marked probability<b id="successValue">0.00%</b></div><div>After full search<b id="expectedValue">96.13%</b></div></div>
       <div class="normLine">Total probability <b id="normValue">100.00%</b></div>
+      <div id="meanGuidePanel" class="meanGuidePanel">
+        <b id="meanGuideTitle">Mean &amp; mixer shift</b>
+        <div class="meanMetric inputMean"><span id="meanInputLabel">Current mean · Re(μ)</span><b id="meanInputValue"></b></div>
+        <div id="meanOutputRow" class="meanMetric outputMean" hidden><span id="meanOutputLabel">After full mixer · −μ</span><b id="meanOutputValue"></b></div>
+        <div id="meanShiftRow" class="meanMetric meanShift" hidden><span>Column shift · Δ = −2 × reference</span><b id="meanShiftValue"></b></div>
+        <p id="meanGuideNote" class="note"></p>
+      </div>
       <p class="note" id="iterationsNote">Three amplification rounds for 16 states.</p>
       <div id="inspectState" class="stateInspector">Hover a column to inspect its amplitude.</div>
       <div id="phaseLegend" class="amplitudeLegend"><b>Amplitude phase</b><div class="phaseGradient"></div><div class="phaseTicks"><span>−π</span><span>−π/2</span><span>0</span><span>π/2</span><span>π</span></div></div>
@@ -90,7 +98,7 @@
     </section>
   </aside>
 </div>
-<script src="./recording.js?v=20261014-previous-step"></script>
-<script type="module" src="./main.js?v=20261014-previous-step"></script>
+<script src="./recording.js?v=20261014-mean-plane"></script>
+<script type="module" src="./main.js?v=20261014-mean-plane"></script>
 </body>
 </html>

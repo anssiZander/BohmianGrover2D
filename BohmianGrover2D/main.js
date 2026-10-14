@@ -1,5 +1,5 @@
-import { SearchSimulation, expectedProbability } from './ordinary-core.js?v=20261014-previous-step';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-previous-step';
+import { SearchSimulation, expectedProbability, mixerProjection } from './ordinary-core.js?v=20261014-mean-plane';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-mean-plane';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
@@ -13,9 +13,10 @@ const dom = Object.fromEntries(['gridSize', 'gridSizeValue', 'gridSummary', 'sta
   'circuitPanel', 'circuitToggle', 'circuitTarget', 'circuitReadout', 'diffuserLabel', 'initialLabel', 'selectionTitle',
   'repeatCaption', 'prepareSymbol', 'inverseSymbol', 'forwardSymbol', 'combinedMixerSymbol', 'combineMixer', 'iterationTrack', 'mixerNote',
   'successValue', 'expectedValue', 'normValue', 'iterationsNote', 'theoryMixer',
+  'meanPlane', 'meanGuidePanel', 'meanGuideTitle', 'meanInputLabel', 'meanInputValue', 'meanOutputRow', 'meanOutputLabel', 'meanOutputValue', 'meanShiftRow', 'meanShiftValue', 'meanGuideNote',
 ].map(id => [id, document.getElementById(id)]));
 const gateNodes = [...document.querySelectorAll('[data-circuit-kind]')];
-const options = { columnView: 'real', phaseColors: true, valueLabels: true, speed: 1 };
+const options = { columnView: 'real', phaseColors: true, valueLabels: true, meanPlane: true, speed: 1 };
 let renderer, ready = false, dirty = true, recording = false, lastTime = null, selection = null, hovered = -1;
 const percent = p => `${(100 * Math.max(0, Math.min(1, p))).toFixed(2)}%`;
 const ket = q => `|${simulation.model.labels[q]}⟩`;
@@ -128,7 +129,14 @@ function nextLabel(gate) {
   if (simulation.combineMixer && ['inverse', 'reference', 'forward'].includes(gate.kind)) return `Apply mixer · ${symbol()} Sᵢ ${symbol()}`;
   return {prepare:`Apply ${symbol()} · prepare`,oracle:'Apply oracle · mark',inverse:`Apply ${symbol()} · diffuser 1/3`,reference:'Apply Sᵢ · flip initial',forward:`Apply ${symbol()} · diffuser 3/3`}[gate.kind];
 }
-function syncUI(state) {
+function meanGuide(state) {
+  const reference = state.mixerInput || state.amplitudes;
+  const values = columnValues(mixerProjection(reference, state.initial), options.columnView === 'imaginary' ? 'imaginary' : 'real');
+  return {visible: options.meanPlane && options.columnView !== 'probability', uniform: state.initial === 0,
+    fixed: !!state.mixerInput, showResult: !!state.mixerInput || (state.kind === 'oracle' && !state.busy),
+    values, outputValues: values.map(value => -value), shifts: values.map(value => -2 * value)};
+}
+function syncUI(state, guide = meanGuide(state)) {
   const {stateCount,iterations,gates} = simulation.model, gate = simulation.active, next = gates[state.completed];
   dom.initialState.value = state.initial; dom.targetState.value = state.target;
   for (const node of [dom.initialState,dom.targetState,dom.selectInitial,dom.selectTarget]) node.disabled = state.busy;
@@ -185,11 +193,27 @@ function syncUI(state) {
   text(dom.heightLegend,`Height = ${name}${options.columnView === 'probability' ? ' · fixed 0–100% scale' : ' · fixed −1 to +1 scale · grid at zero'}`);
   text(dom.columnHelp,options.columnView === 'probability' ? 'Probabilities cannot be negative. Choose Real amplitude to see the oracle flip.'
     : 'Amplitudes above zero are positive; below zero they are negative. Probability is Re(a)² + Im(a)².');
+  dom.meanPlane.disabled = options.columnView === 'probability';
+  dom.meanGuidePanel.hidden = !guide.visible;
+  const part = options.columnView === 'imaginary' ? 'Im' : 'Re';
+  const guideValue = guide.values[guide.uniform ? 0 : q];
+  const precise = value => Math.abs(value) < .000005 ? '0.00000' : `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(5)}`;
+  text(dom.meanGuideTitle, guide.uniform ? 'Mean & mixer shift' : 'Mixer reference levels');
+  text(dom.meanInputLabel, guide.uniform ? `${guide.showResult ? 'Input' : 'Current'} mean · ${part}(μ)` : `Reference · ${ket(q)} · ${part}(p)`);
+  text(dom.meanInputValue, precise(guideValue));
+  text(dom.meanOutputLabel, guide.uniform ? 'After full mixer · −μ' : 'Reference after mixer · −p');
+  text(dom.meanOutputValue, precise(-guideValue));
+  text(dom.meanShiftValue, precise(-2 * guideValue));
+  dom.meanOutputRow.hidden = dom.meanShiftRow.hidden = !guide.showResult;
+  text(dom.meanGuideNote, guide.uniform
+    ? guide.showResult ? `a′ = a − 2μ. Every ${part === 'Re' ? 'real' : 'imaginary'} amplitude shifts by the amount above. The guides stay fixed through the full mixer${['inverse','reference'].includes(state.operationKind) ? '; internal gates have their own intermediate states' : ''}.`
+      : 'The gold plane tracks the mean amplitude. After the oracle, it fixes the shift a′ = a − 2μ for the full mixer.'
+    : `The chosen input prepares different phases. Gold tiles show pⱼ = sⱼ⟨s|a⟩; the full mixer gives a′ⱼ = aⱼ − 2pⱼ.${guide.showResult ? ' Guides refer to the mixer input.' : ''} Hover a column for its reference and shift.`);
   if (renderer) { const degrees = Math.round(renderer.view.elevation*180/Math.PI); dom.elevation.value=degrees; text(dom.elevationValue,`${degrees}°`); }
 }
 function render() {
-  const state = simulation.snapshot(); syncUI(state);
-  renderer?.draw({...state, labels:simulation.model.labels},options); dirty = false;
+  const state = simulation.snapshot(), guide = meanGuide(state); syncUI(state, guide);
+  renderer?.draw({...state, labels:simulation.model.labels, meanGuide:guide},options); dirty = false;
 }
 function refresh() { dirty = true; if (renderer && ready) render(); }
 function advance(seconds) { simulation.advance(seconds); refresh(); return simulation.snapshot(); }
@@ -205,7 +229,7 @@ dom.reset.addEventListener('click',reset); dom.pause.addEventListener('click',to
 dom.combineMixer.addEventListener('click',()=>setCombineMixer(!simulation.combineMixer));
 dom.speed.addEventListener('input',()=>setSpeed(dom.speed.value));
 dom.columnView.addEventListener('change',()=>setColumnView(dom.columnView.value));
-for (const key of ['phaseColors','valueLabels']) dom[key].addEventListener('change',()=>{ options[key]=dom[key].checked; refresh(); });
+for (const key of ['phaseColors','valueLabels','meanPlane']) dom[key].addEventListener('change',()=>{ options[key]=dom[key].checked; refresh(); });
 dom.orbitLeft.addEventListener('click',()=>renderer?.orbit(-.25)); dom.orbitRight.addEventListener('click',()=>renderer?.orbit(.25));
 dom.zoomIn.addEventListener('click',()=>renderer?.zoom(1.15)); dom.zoomOut.addEventListener('click',()=>renderer?.zoom(1/1.15));
 dom.topView.addEventListener('click',()=>renderer?.setView({yaw:0,elevation:85*Math.PI/180,zoom:1.15}));
@@ -230,7 +254,7 @@ const api = {
   projectState:(q,top=true)=>renderer.projectState(q,top),
   pickAt:(x,y)=>renderer.hitTest(x,y),
   histogram:()=>({side:simulation.model.side,view:options.columnView,values:columnValues(simulation.amplitudes,options.columnView),
-    heights:columnValues(simulation.amplitudes,options.columnView).map(value=>columnHeight(value,simulation.model.side)),maximum:columnHeight(1,simulation.model.side)}),
+    heights:columnValues(simulation.amplitudes,options.columnView).map(value=>columnHeight(value,simulation.model.side)),maximum:columnHeight(1,simulation.model.side),meanGuide:meanGuide(simulation.snapshot())}),
   beginFrameRecording:()=>{recording=true;lastTime=null;},
   endFrameRecording:()=>{recording=false;lastTime=null;},
   renderRecordingFrame:({fps=60}={})=>advance(options.speed/(Number.isFinite(fps) && fps>0 ? fps : 60)),
