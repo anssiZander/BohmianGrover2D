@@ -2,104 +2,91 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <meta name="theme-color" content="#0b1220"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Ordinary Grover · 4×4</title>
   <link rel="icon" href="data:,"/>
-  <link rel="stylesheet" href="./styles.css?v=20261014-ordinary1"/>
+  <link rel="stylesheet" href="./styles.css?v=20261014-amplitudes2"/>
 </head>
 <body>
-<div id="root">
-  <header class="masthead">
-    <div><p class="eyebrow">A QUANTUM SEARCH, STEP BY STEP</p><h1>Ordinary Grover<span class="titleDot">.</span></h1></div>
-    <div class="headerNote"><span class="statusDot"></span><span id="stateCountLabel">16 states · 3 iterations</span></div>
-  </header>
-  <main class="layout">
-    <aside class="controls panel" aria-label="Search controls">
-      <section>
-        <div class="sectionHeading"><h2>Set the search</h2><span class="sectionNumber">01</span></div>
-        <label class="rangeLabel" for="gridSize">Grid size <output id="gridSizeValue" for="gridSize">4 × 4</output></label>
-        <input id="gridSize" type="range" min="2" max="5" step="1" value="4"/>
-        <div class="rangeTicks" aria-hidden="true"><span>2 × 2</span><span>3 × 3</span><span>4 × 4</span><span>5 × 5</span></div>
-        <p class="help" id="gridSummary">16 computational basis states.</p>
-        <div class="stateChoices">
-          <label for="initialState"><span class="initialDot"></span> Initial state<select id="initialState"></select></label>
-          <label for="targetState"><span class="goalDot"></span> Marked state<select id="targetState"></select></label>
-        </div>
-        <div class="selectionButtons" role="group" aria-label="Choose a state on the histogram">
-          <button id="selectInitial" type="button" aria-pressed="false">Pick initial</button>
-          <button id="selectTarget" type="button" aria-pressed="false">Pick marked</button>
-        </div>
-        <p class="help selectionHint" id="selectionHint">Choose states above, or pick a square on the histogram.</p>
-      </section>
-      <section>
-        <div class="sectionHeading"><h2>Walk the circuit</h2><span class="sectionNumber">02</span></div>
-        <button id="next" type="button" class="primary wide">Apply H · prepare <span aria-hidden="true">→</span></button>
-        <button id="full" type="button" class="secondary wide">Run full search</button>
-        <div class="buttonPair"><button id="pause" type="button" disabled>Pause</button><button id="reset" type="button">Reset</button></div>
-        <div class="progressTrack" role="progressbar" id="gateProgress" aria-label="Current operation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progressBar"></div></div>
-        <p class="stageStatus" id="stageStatus" role="status">Ready to prepare</p>
-        <label class="rangeLabel" for="speed">Animation speed <output id="speedValue" for="speed">1.0×</output></label>
-        <input id="speed" type="range" min="0.25" max="3" step="0.25" value="1"/>
-      </section>
-      <section class="readingKey">
-        <h2>Read the columns</h2>
-        <p>Height is measurement probability, on a fixed 0–100% scale.</p>
-        <label class="check"><input id="phaseColors" type="checkbox" checked/> Color by amplitude phase</label>
-        <div id="phaseLegend" class="phaseLegend"><div class="phaseGradient"></div><div><span>−π</span><span>−π/2</span><span>0</span><span>π/2</span><span>π</span></div></div>
-        <label class="check"><input id="valueLabels" type="checkbox" checked/> Show state probabilities</label>
-        <p class="help">A phase flip changes color without changing height. Mixing turns that phase difference into a probability difference.</p>
-      </section>
-    </aside>
-    <div class="mainColumn">
-      <section class="histogramPanel panel" aria-labelledby="histogramTitle">
-        <div class="plotHeader"><div><p class="eyebrow">THE COMPUTATIONAL BASIS</p><h2 id="histogramTitle">One column for every state</h2></div><div class="markedReadout"><span id="markedLabel">Marked |1111⟩</span><strong id="markedProbability">0.00<span>%</span></strong></div></div>
-        <div class="plotArea" id="plotArea">
-          <canvas id="c" tabindex="0" aria-label="Interactive 3D probability histogram. Drag or use arrow keys to orbit, scroll or use plus and minus to zoom. Home resets the camera." aria-describedby="cameraHint"></canvas>
-          <div class="plotBadge" id="plotBadge">INPUT STATE</div>
-          <p class="error" id="error" hidden></p>
-        </div>
-        <div class="cameraBar">
-          <p id="cameraHint">Drag to orbit <span>·</span> Scroll / pinch to zoom</p>
-          <div class="cameraButtons" role="group" aria-label="Camera controls">
-            <button id="orbitLeft" type="button" title="Orbit left" aria-label="Orbit left">↶</button><button id="orbitRight" type="button" title="Orbit right" aria-label="Orbit right">↷</button>
-            <button id="zoomOut" type="button" title="Zoom out" aria-label="Zoom out">−</button><button id="zoomIn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-            <button id="topView" type="button">Top view</button><button id="resetView" type="button">Reset view</button>
-          </div>
-        </div>
-        <div class="plotFooter"><p id="gateDescription">All probability starts in the selected initial state. Apply H to prepare a balanced superposition.</p><div id="inspectState">Hover a column to inspect its state.</div></div>
-      </section>
-      <section class="circuitPanel panel" aria-labelledby="circuitTitle">
-        <div class="circuitHeading"><div><p class="eyebrow">THE SAME OPERATIONS, ONE AT A TIME</p><h2 id="circuitTitle">Prepare, then amplify</h2></div><span id="circuitStatus">0 / 13 operations</span></div>
-        <div class="circuitScroll">
-          <div class="circuit" role="img" aria-label="Circuit: initial state, H preparation, then repeat oracle, inverse H, reference phase, and forward H." id="circuitDiagram">
-            <div class="circuitInput"><span id="circuitInput">|0000⟩</span><small>INPUT</small></div>
-            <div class="gate" data-circuit-kind="prepare"><b id="prepareSymbol">H</b><span>Prepare</span></div>
-            <div class="repeatGroup"><div class="repeatCaption" id="repeatCaption">REPEAT 3 TIMES</div>
-              <div class="gate" data-circuit-kind="oracle"><b>O<sub>ω</sub></b><span>Oracle</span></div>
-              <div class="gate" data-circuit-kind="inverse"><b id="inverseSymbol">H<sup>†</sup></b><span>Inverse</span></div>
-              <div class="gate" data-circuit-kind="reference"><b>S<sub>i</sub></b><span>Reference</span></div>
-              <div class="gate" data-circuit-kind="forward"><b id="forwardSymbol">H</b><span>Forward</span></div>
-            </div>
-            <div class="circuitOutput"><span>↗</span><small>READ OUT</small></div>
-          </div>
-        </div>
-        <div class="iterationTrack" id="iterationTrack"></div>
-        <p class="help" id="mixerNote">H is the four-qubit Hadamard. H† is its inverse.</p>
-      </section>
+<div id="wrap">
+  <aside id="ui" class="panel">
+    <div class="head"><h3 id="appTitle">Ordinary Grover · 4×4</h3><button id="minui" class="mini" type="button" aria-expanded="true" aria-label="Collapse controls">−</button></div>
+    <div id="uibody">
+      <div class="section">Search space</div>
+      <div class="row"><label for="gridSize">Grid size</label><input id="gridSize" type="range" min="2" max="5" step="1" value="4" aria-describedby="gridSummary"/><span id="gridSizeValue" class="val">4×4</span></div>
+      <p id="gridSummary" class="note">16 basis states. Changing size resets the search.</p>
+      <div class="section">Gates</div>
+      <div class="ops"><button id="next" type="button">Apply H · prepare</button><button id="full" type="button" class="full">Run full search</button></div>
+      <div id="gateProgress" role="progressbar" aria-label="Current operation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progressBar"></div></div>
+      <div id="stageStatus" class="status" role="status">Ready to prepare</div>
+      <div class="section">Playback &amp; columns</div>
+      <div class="row"><label for="columnView">Columns</label><select id="columnView"><option value="real">Real amplitude · Re(a)</option><option value="imaginary">Imaginary amplitude · Im(a)</option><option value="probability">Probability · |a|²</option></select></div>
+      <p class="note" id="columnHelp">Positive amplitudes rise above zero; negative amplitudes extend below it.</p>
+      <div class="row"><label for="speed">Gate speed</label><input id="speed" type="range" min="0.25" max="3" step="0.25" value="1"/><span id="speedValue" class="val">1.0×</span></div>
+      <div class="row checks"><label><input id="phaseColors" type="checkbox" checked/> Phase colors</label><label><input id="valueLabels" type="checkbox" checked/> Value labels</label></div>
+      <div class="section">Initial &amp; marked states</div>
+      <div class="row"><label for="initialState">Initial</label><select id="initialState"></select></div>
+      <div class="row"><label for="targetState">Marked</label><select id="targetState"></select></div>
+      <div class="section">Camera</div>
+      <div class="row"><label for="elevation">Elevation</label><input id="elevation" type="range" min="-85" max="85" step="1" value="30"/><span id="elevationValue" class="val">30°</span></div>
+      <p class="note">Drag or use arrow keys to orbit. Scroll / pinch to zoom. The 0° view is level with the zero plane.</p>
     </div>
-    <aside class="insights" aria-label="Search results and explanation">
-      <section class="panel resultPanel"><p class="eyebrow">MARKED STATE</p><h2 id="resultState">|1111⟩</h2><div class="successBar"><div id="successFill"></div></div><dl><div><dt>Probability now</dt><dd id="successValue">0.00%</dd></div><div><dt>After full search</dt><dd id="expectedValue">96.13%</dd></div><div><dt>Total probability</dt><dd id="normValue">100.00%</dd></div></dl><p class="help" id="iterationsNote">Three amplification rounds for 16 states.</p></section>
-      <section class="panel explanation"><p class="eyebrow">WHAT EACH STEP DOES</p><ol>
-        <li><strong>Prepare</strong><p>Spread one basis state across the entire grid, with equal probabilities.</p></li>
-        <li><strong>Mark</strong><p>The oracle rotates the marked amplitude by π. Its probability stays the same.</p></li>
-        <li><strong>Amplify</strong><p>Undo preparation, flip the initial-state phase, then prepare again. Together, these three gates increase the marked probability.</p></li>
-      </ol><details><summary>About the gates and colors</summary><p id="theoryMixer">On 2×2 and 4×4 grids, H is the tensor-product qubit Hadamard.</p><p>The reference gate flips the chosen initial amplitude. H Sᵢ H† is the Grover reflection up to an overall minus sign, which leaves probabilities unchanged.</p><p>With a different initial state, preparation still gives equal probabilities, but phases may differ. Colors show the amplitudes’ phases; a common phase shift of every column has no measurable effect.</p><p>Between gates, the display follows the same smooth unitary interpolation as the non-free demonstration. The gate endpoints are the ordinary logical circuit.</p></details></section>
-    </aside>
+    <div class="btnrow"><button id="reset" type="button">Reset (R)</button><button id="pause" type="button" disabled>Pause</button></div>
+  </aside>
+
+  <main id="stage">
+    <header id="waveHeader">
+      <div class="waveHeading"><span class="eyebrow" id="stateCountLabel">16 BASIS STATES · 3 ITERATIONS</span><h1>Ordinary Grover</h1></div>
+      <div class="stateBadges"><div class="initialBadge"><span id="initialLabel">INITIAL |0000⟩</span></div><div class="targetBadge"><span id="markedLabel">MARKED |1111⟩</span><b id="markedProbability">0.00%</b></div></div>
+      <div id="selectionGuide" data-step="ready">
+        <strong id="selectionTitle">Choose initial / marked state</strong>
+        <div class="selectionActions" role="group" aria-label="Pick a state on the columns"><button id="selectInitial" type="button" aria-pressed="false">Pick initial</button><button id="selectTarget" type="button" aria-pressed="false">Pick marked</button></div>
+        <p id="selectionHint">Use the selectors or pick a square. Drag to orbit.</p>
+      </div>
+    </header>
+    <div id="plotArea"><canvas id="c" tabindex="0" aria-label="3D signed amplitude columns above and below zero. Drag or use arrow keys to orbit, scroll or use plus and minus to zoom. Home resets the camera." aria-describedby="cameraHint"></canvas><div id="plotBadge">INPUT STATE</div><div id="error" role="alert" hidden></div></div>
+    <footer id="waveFooter">
+      <p id="gateDescription">One initial column has amplitude +1. Apply H to prepare equal amplitudes.</p>
+      <div class="cameraBar"><span id="cameraHint">Drag to orbit · Scroll / pinch to zoom</span><div class="cameraButtons" role="group" aria-label="Camera controls"><button id="orbitLeft" type="button" aria-label="Orbit left" title="Orbit left">↶</button><button id="orbitRight" type="button" aria-label="Orbit right" title="Orbit right">↷</button><button id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out">−</button><button id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in">+</button><button id="levelView" type="button">0° view</button><button id="topView" type="button">Top view</button><button id="resetView" type="button">Reset view</button></div></div>
+      <span id="heightLegend">Height = real amplitude · zero plane separates positive and negative</span>
+    </footer>
   </main>
-  <footer class="pageFooter">ORDINARY GROVER <span>Probability, phase, and interference.</span><span>Space: pause / resume · R: reset</span></footer>
+
+  <aside id="rightColumn">
+    <section id="circuitPanel" class="panel" aria-label="Grover circuit: two 4-level registers">
+      <div class="head"><h3>Quantum gate circuit</h3><button id="circuitToggle" class="mini" type="button" aria-expanded="true" aria-label="Collapse circuit">−</button></div>
+      <div class="circuitBody">
+        <svg id="circuitDiagram" class="circuitSvg" viewBox="0 0 840 188" role="img" aria-labelledby="circuitTitle circuitDescription">
+          <title id="circuitTitle">Grover circuit: two 4-level registers</title><desc id="circuitDescription">Preparation runs once. Oracle, inverse mixer, reference phase and forward mixer repeat three times.</desc>
+          <line class="circuitWireGlow" x1="90" y1="55" x2="812" y2="55"/><line class="circuitWire" x1="90" y1="55" x2="812" y2="55"/><text class="circuitInput" id="circuitInputX" x="6" y="61">|0⟩</text><text class="circuitBit" id="circuitXLabel" x="45" y="59">x (4)</text>
+          <line class="circuitWireGlow" x1="90" y1="105" x2="812" y2="105"/><line class="circuitWire" x1="90" y1="105" x2="812" y2="105"/><text class="circuitInput" id="circuitInputY" x="6" y="111">|0⟩</text><text class="circuitBit" id="circuitYLabel" x="45" y="109">y (4)</text>
+          <g class="circuitGate future" data-circuit-kind="prepare"><rect class="gateBox" x="112" y="23" width="82" height="114" rx="9"/><text id="prepareSymbol" class="gateText" x="153" y="87">H</text><text class="gateCaption" x="153" y="155">PREPARE</text><text class="gateTick" x="179" y="39">✓</text></g>
+          <g class="circuitGate future" data-circuit-kind="oracle"><rect class="gateBox" x="231" y="23" width="82" height="114" rx="9"/><text class="gateText" x="272" y="87">Oω</text><text class="gateCaption" x="272" y="155">ORACLE</text><text class="gateTick" x="298" y="39">✓</text></g>
+          <g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text id="inverseSymbol" class="gateText" x="408" y="87">H†</text><text class="gateCaption" x="408" y="155">INVERSE</text><text class="gateTick" x="434" y="39">✓</text></g>
+          <g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">Sᵢ</text><text class="gateCaption" x="527" y="155">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
+          <g class="circuitGate future" data-circuit-kind="forward"><rect class="gateBox" x="605" y="23" width="82" height="114" rx="9"/><text id="forwardSymbol" class="gateText" x="646" y="87">H</text><text class="gateCaption" x="646" y="155">FORWARD</text><text class="gateTick" x="672" y="39">✓</text></g>
+          <path class="diffuserBrace" d="M355 166v6h344v-6"/><text id="diffuserLabel" class="diffuserLabel" x="527" y="186">DIFFUSER = H Sᵢ H†</text>
+          <g id="circuitReadout" class="readoutNode"><circle cx="777" cy="80" r="33"/><path d="M756 89a24 24 0 0 1 42 0M777 86l15-18"/><text x="777" y="155">ANSWER</text></g>
+        </svg>
+        <div id="circuitMeta"><span id="circuitTarget">w = |1111⟩</span><span id="circuitStatus">0 / 13 operations</span></div>
+        <p id="repeatCaption" class="note">Prepare once; repeat the four remaining gates 3 times.</p>
+        <div id="iterationTrack" aria-label="Marked probability after each iteration"></div>
+        <p id="mixerNote" class="note">H is the four-qubit Hadamard.</p>
+      </div>
+    </section>
+    <section id="info" class="panel">
+      <div class="head"><h3>State diagnostics</h3></div>
+      <div class="metrics"><div>Marked probability<b id="successValue">0.00%</b></div><div>After full search<b id="expectedValue">96.13%</b></div></div>
+      <div class="normLine">Total probability <b id="normValue">100.00%</b></div>
+      <p class="note" id="iterationsNote">Three amplification rounds for 16 states.</p>
+      <div id="inspectState" class="stateInspector">Hover a column to inspect its amplitude.</div>
+      <div id="phaseLegend" class="amplitudeLegend"><b>Amplitude phase</b><div class="phaseGradient"></div><div class="phaseTicks"><span>−π</span><span>−π/2</span><span>0</span><span>π/2</span><span>π</span></div></div>
+      <details class="theory" open><summary>Reading signed amplitudes</summary><p>The oracle flips the marked amplitude through zero to the negative side. The probability is still |a|², so changing its sign does not change its probability.</p><p>During a smooth phase flip, amplitude rotates through the imaginary direction. The real column passes through zero while the imaginary component carries the amplitude. Choose <b>Imaginary amplitude</b> to inspect it.</p><p>The 2×2 and 4×4 gate endpoints are real. The odd grids can have complex amplitudes even at checkpoints.</p></details>
+      <details class="theory"><summary>Gates and phase convention</summary><p id="theoryMixer">H is the tensor-product qubit Hadamard.</p><p>The three diffuser gates are unchanged: inverse preparation, the initial-state phase flip Sᵢ, then forward preparation. H Sᵢ H† is the usual reflection with an overall minus sign. Thus an amplified column can point down; its increasing magnitude gives the same Grover success probability. A common sign of all amplitudes has no measurable effect.</p><p>The animation follows the original continuous unitary gates. The real and imaginary views show the actual amplitude components, with no sign adjustments at checkpoints.</p></details>
+    </section>
+  </aside>
 </div>
-<script src="./recording.js?v=20261014-ordinary1"></script>
-<script type="module" src="./main.js?v=20261014-ordinary1"></script>
+<script src="./recording.js?v=20261014-amplitudes2"></script>
+<script type="module" src="./main.js?v=20261014-amplitudes2"></script>
 </body>
 </html>

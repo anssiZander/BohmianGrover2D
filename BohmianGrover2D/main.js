@@ -1,19 +1,21 @@
-import { SearchSimulation, expectedProbability } from './multiregion-core.js?v=20261014-ordinary1';
-import { HistogramRenderer, columnHeight } from './histogram-renderer.js?v=20261014-ordinary1';
+import { SearchSimulation, expectedProbability } from './multiregion-core.js?v=20261014-amplitudes2';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-amplitudes2';
 
 // Reuse the non-free branch's exact logical gates and timing, unchanged.
 const simulation = new SearchSimulation(15, 0, 4);
-const dom = Object.fromEntries(['gridSize', 'gridSizeValue', 'gridSummary', 'stateCountLabel',
+const dom = Object.fromEntries(['gridSize', 'gridSizeValue', 'gridSummary', 'stateCountLabel', 'appTitle', 'minui', 'uibody',
   'initialState', 'targetState', 'selectInitial', 'selectTarget', 'selectionHint', 'next', 'full',
   'pause', 'reset', 'gateProgress', 'progressBar', 'stageStatus', 'speed', 'speedValue',
-  'phaseColors', 'valueLabels', 'phaseLegend', 'c', 'plotArea', 'plotBadge', 'error',
+  'phaseColors', 'valueLabels', 'phaseLegend', 'columnView', 'columnHelp', 'heightLegend', 'c', 'plotArea', 'plotBadge', 'error',
   'markedLabel', 'markedProbability', 'orbitLeft', 'orbitRight', 'zoomOut', 'zoomIn', 'topView',
-  'resetView', 'gateDescription', 'inspectState', 'circuitStatus', 'circuitInput', 'circuitDiagram',
+  'resetView', 'levelView', 'elevation', 'elevationValue', 'gateDescription', 'inspectState', 'circuitStatus', 'circuitDiagram',
+  'circuitInputX', 'circuitInputY', 'circuitXLabel', 'circuitYLabel', 'circuitTitle', 'circuitDescription',
+  'circuitPanel', 'circuitToggle', 'circuitTarget', 'circuitReadout', 'diffuserLabel', 'initialLabel', 'selectionTitle',
   'repeatCaption', 'prepareSymbol', 'inverseSymbol', 'forwardSymbol', 'iterationTrack', 'mixerNote',
-  'resultState', 'successFill', 'successValue', 'expectedValue', 'normValue', 'iterationsNote', 'theoryMixer',
+  'successValue', 'expectedValue', 'normValue', 'iterationsNote', 'theoryMixer',
 ].map(id => [id, document.getElementById(id)]));
 const gateNodes = [...document.querySelectorAll('[data-circuit-kind]')];
-const options = { phaseColors: true, valueLabels: true, speed: 1 };
+const options = { columnView: 'real', phaseColors: true, valueLabels: true, speed: 1 };
 let renderer, ready = false, dirty = true, recording = false, lastTime = null, selection = null, hovered = -1;
 const percent = p => `${(100 * Math.max(0, Math.min(1, p))).toFixed(2)}%`;
 const ket = q => `|${simulation.model.labels[q]}⟩`;
@@ -29,6 +31,7 @@ function buildGridUI() {
   text(dom.gridSummary, `${stateCount} computational basis states. Changing size resets the search.`);
   text(dom.stateCountLabel, `${stateCount} states · ${iterations} ${iterations === 1 ? 'iteration' : 'iterations'}`);
   document.title = `Ordinary Grover · ${side}×${side}`;
+  text(dom.appTitle, document.title);
   for (const select of [dom.initialState, dom.targetState]) {
     select.replaceChildren(...labels.map((label, q) => {
       const option = document.createElement('option'); option.value = q;
@@ -36,13 +39,18 @@ function buildGridUI() {
     }));
   }
   dom.iterationTrack.replaceChildren(...Array.from({length: iterations}, (_, i) => {
-    const node = document.createElement('div'); node.dataset.iteration = i+1;
-    const label = document.createElement('span'); label.textContent = `Round ${i+1}`;
-    const value = document.createElement('b'); value.textContent = '—'; node.append(label, value); return node;
+    const node = document.createElement('span'); node.dataset.iteration = i+1;
+    const value = document.createElement('b'); value.textContent = '—';
+    node.append(document.createTextNode(`Iteration ${i+1}`), value); return node;
   }));
-  text(dom.repeatCaption, `REPEAT ${iterations} ${iterations === 1 ? 'TIME' : 'TIMES'}`);
+  text(dom.repeatCaption, `Prepare once; repeat the four remaining gates ${iterations} ${iterations === 1 ? 'time' : 'times'}.`);
   text(dom.prepareSymbol, symbol()); text(dom.forwardSymbol, symbol());
-  dom.inverseSymbol.replaceChildren(document.createTextNode(symbol()), Object.assign(document.createElement('sup'), { textContent: '†' }));
+  text(dom.inverseSymbol, `${symbol()}†`);
+  text(dom.diffuserLabel, `DIFFUSER = ${symbol()} Sᵢ ${symbol()}†`);
+  text(dom.circuitXLabel, `x (${side})`); text(dom.circuitYLabel, `y (${side})`);
+  text(dom.circuitTitle, `Grover circuit: two ${side}-level registers`);
+  text(dom.circuitDescription, `Preparation runs once. Oracle, inverse mixer, reference phase and forward mixer repeat ${iterations} times.`);
+  dom.circuitPanel.setAttribute('aria-label', dom.circuitTitle.textContent);
   const odd = side % 2;
   text(dom.mixerNote, odd ? `B is the balanced ${stateCount}-state mixer. B† is its inverse; this grid is not a qubit register.`
     : `H is the ${2*Math.log2(side)}-qubit Hadamard. H† is its inverse.`);
@@ -84,15 +92,22 @@ function setSpeed(value) {
   options.speed = Math.max(.25, Math.min(3,speed)); dom.speed.value = options.speed;
   text(dom.speedValue, `${options.speed.toFixed(2).replace(/0$/, '')}×`); return true;
 }
+function setColumnView(view) {
+  if (!['real', 'imaginary', 'probability'].includes(view)) return false;
+  options.columnView = view; dom.columnView.value = view; refresh(); return true;
+}
 function description(kind) {
   const mixer = symbol();
+  const amplitudeView = options.columnView !== 'probability';
   return {
-    input: `All probability starts in ${ket(simulation.initial)}. Apply ${mixer} to prepare equal probabilities across the grid.`,
-    prepare: `${mixer} takes the initial state into a balanced superposition: every column ends at ${(100/simulation.model.stateCount).toFixed(2)}%.`,
-    oracle: `The oracle rotates the phase of the marked state ${ket(simulation.target)} by π. Its color changes; every column keeps the same height.`,
-    inverse: `${mixer}† undoes the preparation transform. The oracle's phase change now produces different column heights.`,
-    reference: `Sᵢ flips the phase of the initial state ${ket(simulation.initial)}. Again, the heights stay fixed.`,
-    forward: `${mixer} completes the reflection about the prepared state. The marked column grows at each completed round.`,
+    input: `The initial amplitude is +1 in ${ket(simulation.initial)}, and zero elsewhere. Apply ${mixer} to prepare the search.`,
+    prepare: `${mixer} prepares amplitudes of magnitude 1/${simulation.model.side}${simulation.initial === 0 ? ', all positive at the endpoint' : ', with phases set by the chosen initial state'}. Each probability is ${(100/simulation.model.stateCount).toFixed(2)}%.`,
+    oracle: amplitudeView ? `The oracle flips the marked amplitude ${ket(simulation.target)} to its negative. The column crosses zero; its probability stays unchanged.`
+      : `The oracle flips the marked amplitude's sign. Probabilities stay unchanged; choose Real amplitude to see the column flip.`,
+    inverse: `${mixer}† undoes preparation. The oracle's sign change now changes how the amplitudes combine.`,
+    reference: amplitudeView ? `Sᵢ flips the initial-state amplitude ${ket(simulation.initial)} through zero. Its probability stays unchanged.`
+      : `Sᵢ flips the initial-state amplitude ${ket(simulation.initial)}. Probability heights stay fixed.`,
+    forward: `${mixer} completes the amplification round. The marked amplitude's magnitude grows; the common minus sign from this diffuser does not change probabilities.`,
   }[kind];
 }
 function nextLabel(gate) {
@@ -104,8 +119,9 @@ function syncUI(state) {
   dom.initialState.value = state.initial; dom.targetState.value = state.target;
   for (const node of [dom.initialState,dom.targetState,dom.selectInitial,dom.selectTarget]) node.disabled = state.busy;
   dom.selectInitial.setAttribute('aria-pressed', selection === 'initial'); dom.selectTarget.setAttribute('aria-pressed', selection === 'target');
+  text(dom.selectionTitle, selection ? `Pick ${selection === 'initial' ? 'initial' : 'marked'} state` : 'Choose initial / marked state');
   dom.c.classList.toggle('picking',!!selection);
-  text(dom.selectionHint, state.busy ? 'State selection is locked until this operation finishes.' : selection ? `Click a column or square to choose the ${selection === 'initial' ? 'initial' : 'marked'} state. Drag still orbits the camera.` : 'Choose states above, or pick a square on the histogram.');
+  text(dom.selectionHint, state.busy ? 'Selection is locked during the operation. Drag to orbit.' : selection ? 'Click a column or square. Drag still orbits the camera.' : 'Use the selectors or pick a square. Drag to orbit.');
   dom.next.disabled = state.busy || !next || !ready; dom.full.disabled = state.busy || !ready;
   dom.pause.disabled = !state.busy; text(dom.pause,state.paused ? 'Resume' : 'Pause');
   text(dom.next,nextLabel(next));
@@ -116,28 +132,36 @@ function syncUI(state) {
   text(dom.plotBadge,state.busy ? `${state.paused ? 'PAUSED · ' : ''}${state.kind.toUpperCase()}${state.iteration ? ` · ROUND ${state.iteration}` : ''}`
     : state.completed === gates.length ? 'SEARCH COMPLETE' : state.completed ? `${state.kind.toUpperCase()} · CHECKPOINT` : 'INPUT STATE');
   const probability = state.probabilities[state.target], formatted = percent(probability);
-  text(dom.markedLabel,`Marked ${ket(state.target)}`);
-  if (dom.markedProbability.dataset.value !== formatted) {
-    dom.markedProbability.dataset.value = formatted;
-    dom.markedProbability.replaceChildren(document.createTextNode(formatted.slice(0,-1)),Object.assign(document.createElement('span'),{textContent:'%'}));
-  }
-  text(dom.resultState,ket(state.target)); text(dom.successValue,formatted); text(dom.normValue,percent(state.norm));
-  dom.successFill.style.width = `${Math.min(100,100*probability)}%`;
-  text(dom.gateDescription,description(state.kind)); text(dom.circuitInput,ket(state.initial));
+  text(dom.markedLabel,`MARKED ${ket(state.target)}`); text(dom.initialLabel,`INITIAL ${ket(state.initial)}`);
+  text(dom.markedProbability,formatted);
+  text(dom.successValue,formatted); text(dom.normValue,percent(state.norm));
+  text(dom.gateDescription,description(state.kind)); text(dom.circuitTarget,`w = ${ket(state.target)}`);
+  const coordinate = value => simulation.model.side % 2 ? value : value.toString(2).padStart(Math.log2(simulation.model.side), '0');
+  text(dom.circuitInputX, `|${coordinate(Math.floor(state.initial / state.side))}⟩`);
+  text(dom.circuitInputY, `|${coordinate(state.initial % state.side)}⟩`);
   text(dom.circuitStatus,`${state.completed} / ${gates.length} operations`);
   for (const node of gateNodes) {
     const kind = node.dataset.circuitKind;
+    const gateIndex = kind === 'prepare' ? 0 : 1 + 4 * Math.max(0,state.iteration-1) + ['oracle','inverse','reference','forward'].indexOf(kind);
     node.classList.toggle('active',state.busy && state.kind === kind);
-    node.classList.toggle('done',!state.busy && state.kind === kind && state.completed > 0);
+    node.classList.toggle('complete',state.completed > gateIndex);
+    node.classList.toggle('future',state.completed <= gateIndex && !(state.busy && state.kind === kind));
   }
+  dom.circuitPanel.classList.toggle('paused',state.paused);
+  dom.circuitReadout.classList.toggle('complete',state.completed === gates.length);
   for (const node of dom.iterationTrack.children) {
     const checkpoint = state.checkpoints.find(item => item.iteration === Number(node.dataset.iteration) && item.kind === 'forward');
     node.classList.toggle('complete',!!checkpoint); text(node.lastElementChild,checkpoint ? percent(checkpoint.targetProbability) : '—');
   }
   const q = hovered >= 0 && hovered < stateCount ? hovered : state.target;
   const phase = state.probabilities[q] > 1e-12 ? `${(Math.atan2(state.amplitudes[2*q+1],state.amplitudes[2*q])/Math.PI).toFixed(2)}π` : 'undefined at zero';
-  text(dom.inspectState,`${ket(q)} · ${percent(state.probabilities[q])}\nPhase ${phase}${q === state.target ? '\nMarked state' : q === state.initial ? '\nInitial state' : ''}`);
+  text(dom.inspectState,`${ket(q)}${q === state.target ? ' · marked' : q === state.initial ? ' · initial' : ''}\nRe(a) ${formatAmplitude(state.amplitudes[2*q])}    Im(a) ${formatAmplitude(state.amplitudes[2*q+1])}\nProbability ${percent(state.probabilities[q])} · phase ${phase}`);
   dom.phaseLegend.hidden = !options.phaseColors;
+  const name = {real:'real amplitude Re(a)',imaginary:'imaginary amplitude Im(a)',probability:'probability |a|²'}[options.columnView];
+  text(dom.heightLegend,`Height = ${name}${options.columnView === 'probability' ? ' · fixed 0–100% scale' : ' · fixed −1 to +1 scale · grid at zero'}`);
+  text(dom.columnHelp,options.columnView === 'probability' ? 'Probabilities cannot be negative. Choose Real amplitude to see the oracle flip.'
+    : 'Amplitudes above zero are positive; below zero they are negative. Probability is Re(a)² + Im(a)².');
+  if (renderer) { const degrees = Math.round(renderer.view.elevation*180/Math.PI); dom.elevation.value=degrees; text(dom.elevationValue,`${degrees}°`); }
 }
 function render() {
   const state = simulation.snapshot(); syncUI(state);
@@ -154,11 +178,16 @@ dom.selectTarget.addEventListener('click',()=>setSelection('target'));
 dom.next.addEventListener('click',startNext); dom.full.addEventListener('click',runFull);
 dom.reset.addEventListener('click',reset); dom.pause.addEventListener('click',togglePause);
 dom.speed.addEventListener('input',()=>setSpeed(dom.speed.value));
+dom.columnView.addEventListener('change',()=>setColumnView(dom.columnView.value));
 for (const key of ['phaseColors','valueLabels']) dom[key].addEventListener('change',()=>{ options[key]=dom[key].checked; refresh(); });
 dom.orbitLeft.addEventListener('click',()=>renderer?.orbit(-.25)); dom.orbitRight.addEventListener('click',()=>renderer?.orbit(.25));
 dom.zoomIn.addEventListener('click',()=>renderer?.zoom(1.15)); dom.zoomOut.addEventListener('click',()=>renderer?.zoom(1/1.15));
-dom.topView.addEventListener('click',()=>renderer?.setView({yaw:0,elevation:Math.PI/2-.015,zoom:1.15}));
+dom.topView.addEventListener('click',()=>renderer?.setView({yaw:0,elevation:85*Math.PI/180,zoom:1.15}));
+dom.levelView.addEventListener('click',()=>renderer?.setView({elevation:0}));
+dom.elevation.addEventListener('input',()=>renderer?.setView({elevation:Number(dom.elevation.value)*Math.PI/180}));
 dom.resetView.addEventListener('click',()=>renderer?.resetView());
+dom.minui.addEventListener('click',()=>{dom.uibody.hidden=!dom.uibody.hidden;dom.minui.setAttribute('aria-expanded',!dom.uibody.hidden);dom.minui.setAttribute('aria-label',dom.uibody.hidden?'Expand controls':'Collapse controls');text(dom.minui,dom.uibody.hidden?'+':'−');markDirty();});
+dom.circuitToggle.addEventListener('click',()=>{const collapsed=dom.circuitPanel.classList.toggle('collapsed');dom.circuitToggle.setAttribute('aria-expanded',!collapsed);dom.circuitToggle.setAttribute('aria-label',collapsed?'Expand circuit':'Collapse circuit');text(dom.circuitToggle,collapsed?'+':'−');});
 window.addEventListener('keydown',event=>{
   if (event.target.closest('input,select,button,summary,textarea,[contenteditable="true"]') || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.code === 'Space') { event.preventDefault(); togglePause(); }
@@ -168,13 +197,14 @@ window.addEventListener('keydown',event=>{
 const api = {
   isReady:()=>ready && !renderer?.lost,
   state:()=>simulation.snapshot(), reset, setInitial:q=>choose('initial',q), setTarget:q=>choose('target',q),
-  setGridSize, startNext, runFull, togglePause, setSpeed, advanceTime:advance,
+  setGridSize, startNext, runFull, togglePause, setSpeed, setColumnView, advanceTime:advance,
   cameraState:()=>({...renderer.view}),
   setCamera:view=>{ renderer.setView(view); refresh(); return {...renderer.view}; },
   resetCamera:()=>{ renderer.resetView(); refresh(); },
   projectState:(q,top=true)=>renderer.projectState(q,top),
   pickAt:(x,y)=>renderer.hitTest(x,y),
-  histogram:()=>({side:simulation.model.side,heights:simulation.snapshot().probabilities.map(p=>columnHeight(p,simulation.model.side)),maximum:columnHeight(1,simulation.model.side)}),
+  histogram:()=>({side:simulation.model.side,view:options.columnView,values:columnValues(simulation.amplitudes,options.columnView),
+    heights:columnValues(simulation.amplitudes,options.columnView).map(value=>columnHeight(value,simulation.model.side)),maximum:columnHeight(1,simulation.model.side)}),
   beginFrameRecording:()=>{recording=true;lastTime=null;},
   endFrameRecording:()=>{recording=false;lastTime=null;},
   renderRecordingFrame:({fps=60}={})=>advance(options.speed/(Number.isFinite(fps) && fps>0 ? fps : 60)),

@@ -1,10 +1,22 @@
 # Ordinary Grover
 
-The `Ordinary-Grover` branch presents the logical algorithm as a **3D histogram
-on a selectable 2×2–5×5 grid**. There are no displayed waves, particles, currents,
-or spatial-density calculations. Column height is the computational-basis
-probability `|a|²`, with a fixed linear 0–100% scale. Optional column colors show
-amplitude phase, so phase-only gates remain visible.
+The `Ordinary-Grover` branch presents the logical algorithm as **3D signed
+amplitude columns on a selectable 2×2–5×5 grid**. The layout matches the physics
+branches: controls on the left, the main view in the center, and the gate circuit
+at the top of the right column with diagnostics underneath. There are no displayed
+waves, particles, currents, or spatial-density calculations.
+
+Column height defaults to **Re(a)** on a fixed −1 to +1 scale, so the oracle
+visibly flips the marked column through the grid's zero plane. For the default
+4×4 input, preparation gives +0.25 in every cell, then the oracle takes the marked
+amplitude to −0.25. Its probability remains 6.25%. The open grid has no opaque
+floor to hide negative columns. The **Columns** selector can also show Im(a)
+or the original nonnegative probability `|a|²` (0–100%).
+
+During a continuous phase pulse, the amplitude rotates through the imaginary
+direction: a zero real column is not necessarily a zero probability. Both complex
+components and the probability remain available in the inspector. Phase colors
+show the full complex amplitude's phase in every view.
 
 This branch starts from `MultiRegion` and reuses its `multiregion-core.js`
 **without modifications**. It preserves the exact operations, continuous gate
@@ -21,19 +33,21 @@ python -m http.server 8835 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8835/`. A browser with WebGL is required. There are no
 external libraries, CDN requests, package installations, or build steps.
-All active page assets and module imports use `?v=20261014-ordinary1`.
+All active page assets and module imports use `?v=20261014-amplitudes2`.
 
 ## Sequence
 
-1. Begin with one column at 100% in the chosen initial state `|i⟩`.
-2. Prepare with `H`: every state has probability `1/N²` on an N×N grid.
+1. Begin with one column at amplitude +1 in the chosen initial state `|i⟩`.
+2. Prepare with `H`: every amplitude has magnitude `1/N` on an N×N grid.
 3. Apply the oracle `Oω`, flipping only the marked amplitude's phase.
 4. Apply `H†`, the inverse preparation.
 5. Apply `Sᵢ`, flipping the initial-state amplitude's phase.
 6. Apply `H`, completing one amplification round. Repeat steps 3–6.
 
 The diffuser `H Sᵢ H†` differs from the conventional Grover reflection only by
-an overall minus sign. It has the same probabilities. Preparation runs once;
+an overall minus sign. It has the same probabilities, but an amplified column
+can point down. The display shows the actual signed components; it does not
+silently remove a common sign or phase at checkpoints. Preparation runs once;
 the remaining four operations repeat 1, 2, 3, or 3 times for 2×2, 3×3, 4×4,
 or 5×5 respectively. For the default 4×4 grid, the marked probability is 6.25%
 after preparation and 47.265625%, 90.844727%, and 96.131897% after each round.
@@ -63,12 +77,16 @@ interpolation of displayed column heights.
   and preserves selected coordinates where possible, clamping at the boundary.
 - **Drag** with a mouse or one finger to orbit; **scroll** or **pinch** to zoom.
   Camera buttons orbit and zoom, **Top view** shows the full grid, and
-  **Reset view** restores the default angle. With the canvas focused, arrow
+  **Reset view** restores the default angle. **0° view** places both the camera
+  and its target exactly on the zero plane. The elevation slider spans −85° to
+  +85°, including zero; dragging can also move below the grid. With the canvas focused, arrow
   keys orbit, +/− zoom, and Home resets. Camera changes never affect amplitudes.
-- **Color by amplitude phase** and **Show state probabilities** affect only
-  presentation. Colors wrap continuously at ±π. A common phase shift of all
+- **Phase colors**, **Value labels**, and the **Columns** selector affect only
+  presentation. Labels show the selected amplitude component, or probability
+  in probability view. Colors wrap continuously at ±π. A common phase shift of all
   columns is physically irrelevant. Undefined phase at zero is reported as such.
-- The gold grid outline marks the target; the pale cyan outline marks the input.
+- The red grid outline marks the target; the green outline marks the input,
+  matching the other branches.
   Both remain visible if the selections coincide. Hover/click inspects a state.
   Labels that would overlap are omitted; the inspector still reports every state.
 - **Start Recording** captures the histogram, its axes and labels as WebM, using
@@ -77,8 +95,10 @@ interpolation of displayed column heights.
 
 ## Rendering and checks
 
-`histogram-renderer.js` renders solid cuboids with perspective and WebGL depth
-testing. Ray/AABB intersections pick the nearest column or cell. The visible
+`histogram-renderer.js` renders signed solid cuboids with perspective and WebGL
+depth testing. Ray/AABB intersections first pick the nearest solid column, then
+fall back to a grid cell. The transparent zero plane does not intercept selection
+of a negative column. The visible
 canvas composites the WebGL scene and text labels, so recordings include both.
 The vertical scale never automatically renormalizes as probabilities change.
 
@@ -92,10 +112,13 @@ node --experimental-default-type=module BohmianGrover2D/tests/static-check.mjs
 
 Serve the app and open `tests/histogram-browser-check.html` for the browser
 checks. They use the actual production UI and renderer, including all four
-grid sizes, gate checkpoints, phase-only height invariance, arbitrary/coincident
-initial and marked states, autoplay, picking around a full orbit, drag/pinch,
-keyboard/zoom/reset controls, and the recording clock. The report appears below
-the page, and the histogram is left at the prepared 4×4 checkpoint.
+grid sizes, gate checkpoints, signed oracle/reference flips with invariant
+probabilities, arbitrary/coincident initial and marked states, autoplay,
+complex-component views, the circuit layout, picking around a full orbit,
+drag/pinch, zero-height and below-plane cameras, keyboard/zoom/reset controls,
+and the recording clock. The page is left at the 4×4 oracle checkpoint. The
+`#histogram-test-report` element contains the result, including a
+`data-status="passed"` attribute on success.
 
 The inherited physics modules and their numerical tests remain available as
 reference, but the histogram page does not load their renderers or shaders.

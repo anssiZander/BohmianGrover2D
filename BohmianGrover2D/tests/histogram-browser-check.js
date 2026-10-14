@@ -17,6 +17,12 @@ try {
   check(checksum()>100000,'rendered nonempty image');
   check(document.querySelectorAll('canvas').length===1,'only the histogram canvas is mounted');
   check(!document.querySelector('#particlesToggle,#currentToggle,#waveArea,#groverGeometry'),'no physical visualizations in the page');
+  check(app.histogram().view==='real','signed real amplitude is the default');
+  check(byId('rightColumn').firstElementChild===byId('circuitPanel'),'circuit is the first panel in the original right column');
+  if (document.documentElement.clientWidth>1100) {
+    check(byId('circuitPanel').getBoundingClientRect().left>=byId('plotArea').getBoundingClientRect().right,'circuit sits to the right of the main view');
+    check(byId('circuitPanel').getBoundingClientRect().top<40,'circuit sits at the top of the layout');
+  }
 
   for (const side of [2,3,4,5]) for (const pair of [[0,side*side-1],[side*side-1,side*side-1]]) {
     app.setGridSize(side); app.setInitial(pair[0]); app.setTarget(pair[1]); app.reset();
@@ -37,7 +43,7 @@ try {
       app.advanceTime(duration/2);
       close(app.state().norm,1,'norm at midpoint');
       if (['oracle','reference'].includes(kind)) {
-        vector(app.histogram().heights,oldHeights,'phase pulse keeps column heights fixed at midpoint');
+        vector(app.state().probabilities,before.probabilities,'phase pulse keeps probabilities fixed at midpoint');
       }
       app.togglePause(); const paused=app.state();app.advanceTime(100);vector(app.state().amplitudes,paused.amplitudes,'pause freezes amplitudes');app.togglePause();
       app.advanceTime(duration/2);
@@ -45,11 +51,12 @@ try {
       close(app.state().norm,1,'norm at checkpoint');
       check(!byId('initialState').disabled,'selection unlocks at checkpoint');
       const state=app.state(), histogram=app.histogram();
-      vector(histogram.heights.map(v=>v/histogram.maximum),state.probabilities,'column heights are probabilities');
+      vector(histogram.heights.map(v=>v/histogram.maximum),state.amplitudes.filter((_,i)=>i%2===0),'column heights are signed real amplitudes');
       if (kind==='prepare') state.probabilities.forEach(p=>close(p,1/count,'balanced preparation'));
       if (['oracle','reference'].includes(kind)) {
-        vector(histogram.heights,oldHeights,'phase pulse keeps heights fixed at endpoint');
         const q=kind==='oracle'?state.target:state.initial;
+        vector(histogram.heights,oldHeights.map((v,i)=>i===q?-v:v),'phase pulse flips exactly the selected signed column');
+        vector(state.probabilities,before.probabilities,'phase pulse keeps probabilities fixed at endpoint');
         close(state.amplitudes[2*q],-before.amplitudes[2*q],'phase gate reverses real component');
         close(state.amplitudes[2*q+1],-before.amplitudes[2*q+1],'phase gate reverses imaginary component');
       }
@@ -67,6 +74,24 @@ try {
   app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.startNext();app.advanceTime(2.4);
   const preparedPixels=checksum();app.startNext();app.advanceTime(1.6);
   check(checksum()!==preparedPixels,'oracle phase change is visible in the rendered image');
+  close(app.histogram().values[15],-.25,'marked column is below zero after oracle');
+  close(app.histogram().values[0],.25,'unmarked column stays above zero after oracle');
+  const oracleState=app.state();
+  app.setColumnView('imaginary');vector(app.histogram().values,oracleState.amplitudes.filter((_,i)=>i%2===1),'imaginary view renders the imaginary component');
+  app.setColumnView('probability');vector(app.histogram().values,oracleState.probabilities,'probability view remains available');
+  vector(app.state().amplitudes,oracleState.amplitudes,'changing the displayed component never changes the algorithm');
+  byId('columnView').value='real';byId('columnView').dispatchEvent(new Event('change'));
+  check(app.histogram().view==='real','column-view selector restores signed amplitudes');
+  byId('levelView').click();await frame();
+  close(app.cameraState().elevation,0,'level view reaches exactly zero elevation');
+  check(byId('elevationValue').textContent==='0°','elevation readout displays zero');
+  const negativeTip=app.projectState(15);
+  check(app.pickAt(negativeTip.x,negativeTip.y)===15,'a negative column can be picked from a level view');
+  canvas.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+  check(app.cameraState().elevation<0,'camera can orbit below the zero plane');
+  byId('elevation').value='0';byId('elevation').dispatchEvent(new Event('input'));await frame();
+  close(app.cameraState().elevation,0,'elevation slider also reaches exactly zero');
+  app.resetCamera();
   app.reset();app.startNext();app.advanceTime(2.4);
   const beforeView=app.state().amplitudes;
   for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2]) {
@@ -98,9 +123,9 @@ try {
   app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.setSpeed(2);app.startNext();app.renderRecordingFrame({fps:60});
   close(app.state().time,2/60,'recording advances by one deterministic frame at chosen speed');
   app.togglePause();const frozen=app.state();app.renderRecordingFrame({fps:60});vector(app.state().amplitudes,frozen.amplitudes,'recording respects pause');
-  app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);
+  app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: preparation, phase pulses, exact step order, optimal success probabilities, pause/reset, autoplayer, 3D rendering, selection, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: signed amplitude flips, complex component views, fixed phase-gate probabilities, exact step order, success probabilities, pause/reset, autoplay, restored circuit layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

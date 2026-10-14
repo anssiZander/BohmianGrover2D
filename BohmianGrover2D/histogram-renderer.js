@@ -1,13 +1,21 @@
-// The only geometry is a board and probability columns. WebGL supplies real
+// Signed amplitude columns straddle an open zero-plane grid. WebGL supplies
 // perspective and depth testing; the visible 2D canvas composites crisp labels
 // onto that render, so a recording includes exactly the same view.
-export const DEFAULT_VIEW = Object.freeze({ yaw: .62, elevation: .63, zoom: 1 });
+export const DEFAULT_VIEW = Object.freeze({ yaw: .62, elevation: Math.PI / 6, zoom: 1 });
 const FOV = 40 * Math.PI / 180;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
 const normalize = a => { const n = Math.hypot(...a); return a.map(v => v / n); };
 export function columnCenter(q, side) { return [Math.floor(q / side) - (side - 1) / 2, 0, (side - 1) / 2 - q % side]; }
-export function columnHeight(probability, side) { return clamp(probability, 0, 1) * side * .92; }
+export function columnHeight(value, side) { return clamp(value, -1, 1) * side * .7; }
+export function columnValues(amplitudes, view = 'real') {
+  return Array.from({ length: amplitudes.length / 2 }, (_, q) => view === 'probability'
+    ? amplitudes[2*q] ** 2 + amplitudes[2*q+1] ** 2
+    : amplitudes[2*q + (view === 'imaginary' ? 1 : 0)]);
+}
+export function formatAmplitude(value) {
+  return Math.abs(value) < .0005 ? '0.000' : `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(3)}`;
+}
 
 function multiply(a, b) {
   return Float32Array.from({ length: 16 }, (_, i) => {
@@ -20,9 +28,10 @@ export function cameraFor(view, width, height, side) {
   const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
   const up = [-Math.sin(yaw) * Math.sin(elevation), Math.cos(elevation), -Math.cos(yaw) * Math.sin(elevation)];
   const back = [Math.sin(yaw) * Math.cos(elevation), Math.sin(elevation), Math.cos(yaw) * Math.cos(elevation)];
-  const target = [0, side * .28, 0];
+  // At elevation 0 both eye and target are exactly on the amplitude-zero plane.
+  const target = [0, 0, 0];
   const halfFov = Math.atan(Math.tan(FOV / 2) * Math.min(1, aspect));
-  // Leave room for the probability ruler even on a narrow phone viewport.
+  // Fit both halves of the signed ruler, including on a narrow phone viewport.
   const distance = side * (aspect < 1 ? 1.15 : 1.03) / Math.sin(halfFov) / zoom;
   const eye = target.map((v, i) => v + distance * back[i]);
   const viewMatrix = [right[0], up[0], back[0], 0, right[1], up[1], back[1], 0,
@@ -95,7 +104,7 @@ export class HistogramRenderer {
   setView(next) {
     for (const key of ['yaw', 'elevation', 'zoom']) if (Number.isFinite(next[key])) this.view[key] = next[key];
     this.view.yaw = ((this.view.yaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-    this.view.elevation = clamp(this.view.elevation, .18, Math.PI / 2 - .015);
+    this.view.elevation = clamp(this.view.elevation, -85 * Math.PI / 180, 85 * Math.PI / 180);
     this.view.zoom = clamp(this.view.zoom, .6, 1.8);
     this.updateCamera(); this.onChange(); return { ...this.view };
   }
@@ -115,6 +124,8 @@ export class HistogramRenderer {
   draw(data, options = {}) {
     this.data = data; this.resize(); if (this.lost) return;
     const { side, probabilities: ps, amplitudes, initial, target, labels } = data;
+    const values = this.values = columnValues(amplitudes, options.columnView);
+    const isProbability = options.columnView === 'probability';
     const triangles = [], lines = [], half = side / 2;
     const vertex = (out, p, color) => out.push(...p, ...color);
     const quad = (points, color) => { for (const i of [0, 1, 2, 0, 2, 3]) vertex(triangles, points[i], color); };
@@ -123,38 +134,36 @@ export class HistogramRenderer {
       const points = [[x-r,y,z-r],[x+r,y,z-r],[x+r,y,z+r],[x-r,y,z+r]];
       for (let i = 0; i < 4; i++) line(points[i], points[(i+1)%4], color);
     };
-    quad([[-half-.13,-.065,-half-.13],[half+.13,-.065,-half-.13],[half+.13,-.065,half+.13],[-half-.13,-.065,half+.13]], [.12,.18,.26]);
+    // No opaque board: amplitudes below zero must remain visible from above.
+    outline(0, 0, half + .05, 0, [.25,.56,.70]);
     for (let q = 0; q < ps.length; q++) {
       const [x,,z] = columnCenter(q, side), r = .474;
-      let tile = (Math.floor(q / side) + q % side) % 2 ? [.085,.14,.21] : [.10,.16,.235];
-      if (q === target) tile = [.23,.21,.16];
-      if (q === this.hover) tile = tile.map(v => v * 1.5);
-      quad([[x-r,0,z-r],[x+r,0,z-r],[x+r,0,z+r],[x-r,0,z+r]], tile);
-      outline(x, z, r, .005, [.21,.30,.40]);
-      if (q === target) { outline(x,z,.435,.013,[.96,.76,.40]); outline(x,z,.415,.014,[.96,.76,.40]); }
-      if (q === initial) outline(x,z,.39,.016,[.64,.87,.96]);
-      const h = columnHeight(ps[q], side);
-      if (h < 1e-8) continue;
-      const w = .31, y = .018;
-      const c = options.phaseColors === false ? [.36,.77,.90] : phaseColor(Math.atan2(amplitudes[2*q+1], amplitudes[2*q]));
+      outline(x, z, r, 0, q === this.hover ? [.54,.84,.96] : [.17,.34,.46]);
+      if (q === target) { outline(x,z,.435,0,[1,.30,.40]); outline(x,z,.415,0,[1,.30,.40]); }
+      if (q === initial) outline(x,z,.39,0,[.26,.93,.49]);
+      const h = columnHeight(values[q], side);
+      if (Math.abs(h) < 1e-8) continue;
+      const w = .31, y = 0;
+      const c = options.phaseColors === false ? (h < 0 ? [.96,.40,.39] : [.36,.77,.90]) : phaseColor(Math.atan2(amplitudes[2*q+1], amplitudes[2*q]));
       const points = [[x-w,y,z-w],[x+w,y,z-w],[x+w,y,z+w],[x-w,y,z+w],
         [x-w,y+h,z-w],[x+w,y+h,z-w],[x+w,y+h,z+w],[x-w,y+h,z+w]];
-      const faces = [[4,5,6,7,.98],[0,1,5,4,.59],[1,2,6,5,.72],[2,3,7,6,.83],[3,0,4,7,.65]];
+      const faces = [[4,5,6,7,.98],[0,1,2,3,.82],[0,1,5,4,.59],[1,2,6,5,.72],[2,3,7,6,.83],[3,0,4,7,.65]];
       for (const face of faces) quad(face.slice(0,4).map(i => points[i]), c.map(v => v * face[4]));
       for (const [a,b] of [[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]) line(points[a], points[b], c.map(v => Math.min(1, v * 1.12)));
     }
-    // Keep the probability ruler on the left silhouette of the board at any yaw.
+    // Keep the signed ruler on the left silhouette of the grid at any yaw.
     const ax = (Math.cos(this.view.yaw) >= 0 ? -1 : 1) * (half + .22);
     const az = (Math.sin(this.view.yaw) >= 0 ? 1 : -1) * (half + .22);
-    line([ax,0,az],[ax,columnHeight(1,side),az],[.32,.43,.56]);
+    line([ax,columnHeight(isProbability ? 0 : -1,side),az],[ax,columnHeight(1,side),az],[.32,.43,.56]);
     this.renderGeometry(triangles, lines);
     const ctx = this.context; ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
     ctx.drawImage(this.surface,0,0,this.width,this.height);
     ctx.font = '10px "Segoe UI", sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    for (const p of this.view.elevation > 1.35 ? [] : [0,.25,.5,.75,1]) {
+    for (const p of Math.abs(this.view.elevation) > 1.35 ? [] : isProbability ? [0,.25,.5,.75,1] : [-1,-.5,0,.5,1]) {
       const pos = project([ax,columnHeight(p,side),az],this.camera);
       ctx.strokeStyle = '#5a728b'; ctx.beginPath(); ctx.moveTo(pos.x-3,pos.y); ctx.lineTo(pos.x+3,pos.y); ctx.stroke();
-      ctx.fillStyle = '#91a6be'; ctx.fillText(`${100*p}%`,pos.x-8,pos.y);
+      ctx.fillStyle = p === 0 ? '#a5e8ff' : '#91a6be';
+      ctx.fillText(isProbability ? `${100*p}%` : p === 0 ? '0' : `${p > 0 ? '+' : '−'}${Math.abs(p).toFixed(1)}`,pos.x-8,pos.y);
     }
     ctx.textAlign = 'center'; ctx.font = '10px Consolas, monospace';
     const frontZ = (Math.cos(this.view.yaw) >= 0 ? 1 : -1) * (half + .23);
@@ -166,31 +175,32 @@ export class HistogramRenderer {
     const candidates = [];
     if (options.valueLabels !== false) for (let q = 0; q < ps.length; q++) {
       if (ps[q] < 1e-6 && q !== target && q !== initial) continue;
-      const [x,,z] = columnCenter(q,side), pos = project([x,columnHeight(ps[q],side)+.05,z],this.camera);
+      const [x,,z] = columnCenter(q,side), h = columnHeight(values[q],side);
+      const pos = project([x,h+(h < 0 ? -.05 : .05),z],this.camera);
       if (!pos.visible) continue;
       candidates.push({ q, pos, priority: q === this.hover ? 3 : q === target ? 2 : q === initial ? 1 : 0 });
     }
     candidates.sort((a,b) => b.priority-a.priority || a.pos.depth-b.pos.depth);
     const occupied = [];
     for (const {q,pos} of candidates) {
-      const text = `${(ps[q]*100).toFixed(ps[q] >= .99995 ? 0 : 1)}%`;
+      const text = isProbability ? `${(ps[q]*100).toFixed(1)}%` : formatAmplitude(values[q]);
       ctx.font = '11px "Segoe UI", sans-serif';
       const label = `|${labels[q]}⟩`, width = Math.max(ctx.measureText(text).width,ctx.measureText(label).width)+12;
-      const rect = { x: pos.x-width/2, y: pos.y-35, w: width, h: 32 };
+      const rect = { x: pos.x-width/2, y: pos.y+(values[q] < -1e-8 ? 4 : -35), w: width, h: 32 };
       if (rect.x < 2 || rect.y < 2 || rect.x+rect.w > this.width-2 || rect.y+rect.h > this.height-2) continue;
       if (occupied.some(b => rect.x < b.x+b.w+3 && rect.x+rect.w+3 > b.x && rect.y < b.y+b.h+3 && rect.y+rect.h+3 > b.y)) continue;
       occupied.push(rect); ctx.fillStyle = '#0b1627dc'; ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
-      ctx.fillStyle = q === target ? '#f5ca79' : '#e1eefb'; ctx.fillText(text,pos.x,rect.y+10);
-      ctx.font = '9px Consolas, monospace'; ctx.fillStyle = q === target ? '#d8b87c' : '#9cb8d2'; ctx.fillText(label,pos.x,rect.y+24);
+      ctx.fillStyle = q === target ? '#ffbcc6' : '#e1eefb'; ctx.fillText(text,pos.x,rect.y+10);
+      ctx.font = '9px Consolas, monospace'; ctx.fillStyle = q === target ? '#ed9eac' : '#9cb8d2'; ctx.fillText(label,pos.x,rect.y+24);
     }
     ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.font = '10px "Segoe UI", sans-serif'; ctx.fillStyle = '#91a8c0';
-    ctx.fillText('HEIGHT  |a|²     •     0–100%',16,this.height-15);
-    ctx.textAlign = 'right'; ctx.fillStyle = '#f5ca79';
-    ctx.fillText(`MARKED |${labels[target]}⟩  ${(100*ps[target]).toFixed(2)}%`,this.width-16,this.height-15);
+    ctx.fillText(isProbability ? 'HEIGHT |a|² · 0–100%' : `HEIGHT ${options.columnView === 'imaginary' ? 'Im(a)' : 'Re(a)'} · −1 to +1`,12,this.height-12);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#ffb4c2';
+    ctx.fillText(`P(marked) ${(100*ps[target]).toFixed(2)}%`,this.width-12,this.height-12);
   }
   renderGeometry(triangles, lines) {
     const gl = this.gl; gl.viewport(0,0,this.surface.width,this.surface.height);
-    gl.clearColor(.047,.086,.149,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.clearColor(.004,.027,.063,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program); gl.uniformMatrix4fv(this.matrixUniform,false,this.camera.matrix);
     gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
     gl.enableVertexAttribArray(this.positionAttribute); gl.vertexAttribPointer(this.positionAttribute,3,gl.FLOAT,false,24,0);
@@ -202,20 +212,26 @@ export class HistogramRenderer {
   }
   hitTest(x,y) {
     if (!this.data || !this.camera) return -1;
-    const {side,probabilities} = this.data, direction = screenRay(x,y,this.camera);
+    const {side} = this.data, direction = screenRay(x,y,this.camera);
     let hit = -1, nearest = Infinity;
     for (let q = 0; q < side*side; q++) {
-      const [cx,,cz] = columnCenter(q,side), h = columnHeight(probabilities[q],side);
-      const tile = rayBox(this.camera.eye,direction,[cx-.474,-.05,cz-.474],[cx+.474,0,cz+.474]);
-      const bar = h > 1e-8 ? rayBox(this.camera.eye,direction,[cx-.31,.018,cz-.31],[cx+.31,h+.018,cz+.31]) : Infinity;
-      const distance = Math.min(tile,bar);
+      const [cx,,cz] = columnCenter(q,side), h = columnHeight(this.values[q],side);
+      const distance = Math.abs(h) > 1e-8 ? rayBox(this.camera.eye,direction,[cx-.31,Math.min(0,h),cz-.31],[cx+.31,Math.max(0,h),cz+.31]) : Infinity;
+      if (distance < nearest) { nearest = distance; hit = q; }
+    }
+    // The grid is transparent: only fall back to its cells when no solid
+    // column is hit, so a negative column can be picked through the zero plane.
+    if (hit >= 0) return hit;
+    for (let q = 0; q < side*side; q++) {
+      const [cx,,cz] = columnCenter(q,side);
+      const distance = rayBox(this.camera.eye,direction,[cx-.474,-.002,cz-.474],[cx+.474,.002,cz+.474]);
       if (distance < nearest) { nearest = distance; hit = q; }
     }
     return hit;
   }
   projectState(q, top = true) {
     if (!this.data || q < 0 || q >= this.data.side ** 2) return null;
-    const p = columnCenter(q,this.data.side); if (top) p[1] = columnHeight(this.data.probabilities[q],this.data.side)+.018;
+    const p = columnCenter(q,this.data.side); if (top) p[1] = columnHeight(this.values[q],this.data.side);
     return project(p,this.camera);
   }
   installControls() {
