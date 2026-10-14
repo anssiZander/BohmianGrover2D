@@ -1,5 +1,5 @@
-import { SearchSimulation, expectedProbability, mixerProjection } from './ordinary-core.js?v=20261014-mean-plane';
-import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-mean-plane';
+import { SearchSimulation, expectedProbability, mixerProjection } from './ordinary-core.js?v=20261014-moving-mean';
+import { HistogramRenderer, columnHeight, columnValues, formatAmplitude } from './histogram-renderer.js?v=20261014-moving-mean';
 
 // Independent state-vector Grover circuit; no physics simulation is loaded.
 const simulation = new SearchSimulation(15, 0, 4);
@@ -131,10 +131,12 @@ function nextLabel(gate) {
 }
 function meanGuide(state) {
   const reference = state.mixerInput || state.amplitudes;
-  const values = columnValues(mixerProjection(reference, state.initial), options.columnView === 'imaginary' ? 'imaginary' : 'real');
+  const view = options.columnView === 'imaginary' ? 'imaginary' : 'real';
+  const values = columnValues(mixerProjection(state.amplitudes, state.initial), view);
+  const inputValues = columnValues(mixerProjection(reference, state.initial), view);
   return {visible: options.meanPlane && options.columnView !== 'probability', uniform: state.initial === 0,
-    fixed: !!state.mixerInput, showResult: !!state.mixerInput || (state.kind === 'oracle' && !state.busy),
-    values, outputValues: values.map(value => -value), shifts: values.map(value => -2 * value)};
+    showResult: !!state.mixerInput || (state.kind === 'oracle' && !state.busy),
+    values, inputValues, outputValues: inputValues.map(value => -value), shifts: inputValues.map(value => -2 * value)};
 }
 function syncUI(state, guide = meanGuide(state)) {
   const {stateCount,iterations,gates} = simulation.model, gate = simulation.active, next = gates[state.completed];
@@ -199,16 +201,16 @@ function syncUI(state, guide = meanGuide(state)) {
   const guideValue = guide.values[guide.uniform ? 0 : q];
   const precise = value => Math.abs(value) < .000005 ? '0.00000' : `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(5)}`;
   text(dom.meanGuideTitle, guide.uniform ? 'Mean & mixer shift' : 'Mixer reference levels');
-  text(dom.meanInputLabel, guide.uniform ? `${guide.showResult ? 'Input' : 'Current'} mean · ${part}(μ)` : `Reference · ${ket(q)} · ${part}(p)`);
+  text(dom.meanInputLabel, guide.uniform ? `Current mean · ${part}(μ)` : `Current reference · ${ket(q)} · ${part}(p)`);
   text(dom.meanInputValue, precise(guideValue));
-  text(dom.meanOutputLabel, guide.uniform ? 'After full mixer · −μ' : 'Reference after mixer · −p');
-  text(dom.meanOutputValue, precise(-guideValue));
-  text(dom.meanShiftValue, precise(-2 * guideValue));
+  text(dom.meanOutputLabel, guide.uniform ? 'Final mean · −μ₀' : 'Final reference · −p₀');
+  text(dom.meanOutputValue, precise(guide.outputValues[guide.uniform ? 0 : q]));
+  text(dom.meanShiftValue, precise(guide.shifts[guide.uniform ? 0 : q]));
   dom.meanOutputRow.hidden = dom.meanShiftRow.hidden = !guide.showResult;
   text(dom.meanGuideNote, guide.uniform
-    ? guide.showResult ? `a′ = a − 2μ. Every ${part === 'Re' ? 'real' : 'imaginary'} amplitude shifts by the amount above. The guides stay fixed through the full mixer${['inverse','reference'].includes(state.operationKind) ? '; internal gates have their own intermediate states' : ''}.`
+    ? guide.showResult ? `μ₀ is the mixer input mean. The gold plane follows the current columns${state.combineMixer ? ', moving with them during the combined mixer' : ', including the intermediate gate states'}. The full shift is −2μ₀.`
       : 'The gold plane tracks the mean amplitude. After the oracle, it fixes the shift a′ = a − 2μ for the full mixer.'
-    : `The chosen input prepares different phases. Gold tiles show pⱼ = sⱼ⟨s|a⟩; the full mixer gives a′ⱼ = aⱼ − 2pⱼ.${guide.showResult ? ' Guides refer to the mixer input.' : ''} Hover a column for its reference and shift.`);
+    : `The chosen input prepares different phases. Gold tiles follow the current pⱼ = sⱼ⟨s|a⟩. The full shift is −2pⱼ₀, using the mixer input reference. Hover a column for its reference and shift.`);
   if (renderer) { const degrees = Math.round(renderer.view.elevation*180/Math.PI); dom.elevation.value=degrees; text(dom.elevationValue,`${degrees}°`); }
 }
 function render() {

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Ordinary Grover · 4×4</title>
   <link rel="icon" href="data:,"/>
-  <link rel="stylesheet" href="./styles.css?v=20261014-mean-plane"/>
+  <link rel="stylesheet" href="./styles.css?v=20261014-moving-mean"/>
 </head>
 <body>
 <div id="wrap">
@@ -87,7 +87,7 @@
         <b id="meanGuideTitle">Mean &amp; mixer shift</b>
         <div class="meanMetric inputMean"><span id="meanInputLabel">Current mean · Re(μ)</span><b id="meanInputValue"></b></div>
         <div id="meanOutputRow" class="meanMetric outputMean" hidden><span id="meanOutputLabel">After full mixer · −μ</span><b id="meanOutputValue"></b></div>
-        <div id="meanShiftRow" class="meanMetric meanShift" hidden><span>Column shift · Δ = −2 × reference</span><b id="meanShiftValue"></b></div>
+        <div id="meanShiftRow" class="meanMetric meanShift" hidden><span>Full shift · Δ = −2 × input reference</span><b id="meanShiftValue"></b></div>
         <p id="meanGuideNote" class="note"></p>
       </div>
       <p class="note" id="iterationsNote">Three amplification rounds for 16 states.</p>
@@ -98,7 +98,7 @@
     </section>
   </aside>
 </div>
-<script src="./recording.js?v=20261014-mean-plane"></script>
-<script type="module" src="./main.js?v=20261014-mean-plane"></script>
+<script src="./recording.js?v=20261014-moving-mean"></script>
+<script type="module" src="./main.js?v=20261014-moving-mean"></script>
 </body>
 </html>

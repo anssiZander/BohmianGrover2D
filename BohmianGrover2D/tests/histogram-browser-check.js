@@ -233,18 +233,51 @@ try {
     check(checksum()!==withGuide,'mean guide changes the actual rendered canvas');
     vector(app.state().amplitudes,input,'guide toggle does not change amplitudes');
     byId('meanPlane').click();
+    const checkLiveMean = message => {
+      const columns=app.histogram(), mean=columns.values.reduce((sum,v)=>sum+v,0)/16;
+      columns.meanGuide.values.forEach(v=>close(v,mean,message));
+    };
     app.startNext();app.advanceTime(.6);
-    vector(app.histogram().meanGuide.values,guide.values,'reference stays fixed during active mixer');
+    checkLiveMean('gold plane follows current columns during mixer');
+    check(Math.abs(app.histogram().meanGuide.values[0]-guide.values[0])>.001,'gold plane moves away from the input mean');
+    vector(app.histogram().meanGuide.inputValues,guide.values,'input reference for full shift stays available');
     app.togglePause();const pausedGuide=app.histogram().meanGuide;app.advanceTime(10);
-    vector(app.histogram().meanGuide.values,pausedGuide.values,'pause retains fixed mean');app.togglePause();
+    vector(app.histogram().meanGuide.values,pausedGuide.values,'pause freezes the moving mean plane');app.togglePause();
     app.advanceTime(100);
     while(app.state().completed<5) {app.startNext();app.advanceTime(100);}
-    vector(app.histogram().meanGuide.values,guide.values,'input mean remains visible at completed mixer');
+    vector(app.histogram().meanGuide.values,guide.outputValues,'moving plane arrives at final mean');
+    checkLiveMean('gold plane coincides with the completed columns mean');
     app.histogram().values.forEach((v,q)=>close(v,input[2*q]+guide.shifts[q],'column endpoints follow displayed shift'));
-    byId('previous').click();vector(app.histogram().meanGuide.values,guide.values,'previous step restores correct reference');
+    check(byId('meanInputValue').textContent==='−0.21875','current mean readout follows the plane to its endpoint');
+    byId('previous').click();checkLiveMean('previous step restores the plane with the columns');
     app.setColumnView('imaginary');app.histogram().meanGuide.values.forEach(v=>close(v,0,'imaginary view uses imaginary reference'));
     app.setColumnView('probability');check(!app.histogram().meanGuide.visible && byId('meanPlane').disabled && byId('meanGuidePanel').hidden,'probability view never shows an amplitude mean as probability');
     app.setColumnView('real');check(app.histogram().meanGuide.visible && !byId('meanPlane').disabled,'return to amplitudes restores mean guide');
+  }
+  for(const side of [2,3,4,5]) {
+    app.setGridSize(side);app.setInitial(0);app.setTarget(side*side-1);app.reset();app.setCombineMixer(true);
+    app.startNext();app.advanceTime(2.4);
+    for(let round=0;round<app.state().iterations;round++) {
+      app.startNext();app.advanceTime(1.6);const before=app.state().amplitudes;
+      app.setColumnView('real');const inputRe=app.histogram().meanGuide;
+      app.setColumnView('imaginary');const inputIm=app.histogram().meanGuide;
+      app.startNext();
+      for(let step=1;step<=4;step++) {
+        app.advanceTime(.6);
+        for(const [view,part,original] of [['real',0,inputRe],['imaginary',1,inputIm]]) {
+          app.setColumnView(view);const histogram=app.histogram(), live=histogram.meanGuide;
+          const mean=histogram.values.reduce((sum,v)=>sum+v,0)/(side*side);
+          live.values.forEach((v,q)=>{
+            close(v,mean,'moving plane is the actual amplitude mean throughout every combined round');
+            close(histogram.values[q]-before[2*q+part],v-original.values[q],'plane and columns have exactly the same displacement');
+          });
+          vector(live.inputValues,original.values,'full input reference is independent of moving plane');
+          vector(live.outputValues,original.outputValues,'destination mean stays at the exact endpoint');
+          if(step===2 && view==='real') close(live.values[0],0,'real mean plane crosses zero halfway through the mixer');
+          if(step===4) vector(live.values,live.outputValues,'moving mean finishes at dashed destination');
+        }
+      }
+    }
   }
   for(const side of [3,4,5]) {
     app.setGridSize(side);app.setInitial(side*side-1);app.setTarget(side*side-2);app.reset();app.setCombineMixer(true);app.setColumnView('real');
@@ -252,7 +285,12 @@ try {
     const input=app.state().amplitudes, reference=app.histogram().meanGuide;
     check(!reference.uniform && reference.showResult && byId('meanGuideTitle').textContent==='Mixer reference levels','nonzero inputs use phase-aware tiles');
     app.setColumnView('imaginary');const imag=app.histogram().meanGuide;
-    app.startNext();app.advanceTime(2.4);
+    app.startNext();app.advanceTime(1.2);
+    for(const [view,part,original] of [['real',0,reference],['imaginary',1,imag]]) {
+      app.setColumnView(view);const moving=app.histogram();
+      moving.values.forEach((v,q)=>close(v-input[2*q+part],moving.meanGuide.values[q]-original.values[q],'phase-aware tiles travel with each corresponding column'));
+    }
+    app.advanceTime(1.2);
     app.state().amplitudes.forEach((v,k)=>close(v,input[k]+(k%2?imag:reference).shifts[Math.floor(k/2)],'complex endpoint matches phase-aware per-column displacement'));
   }
   app.setGridSize(4);app.setInitial(0);app.setTarget(15);app.reset();app.setCombineMixer(false);app.setColumnView('real');
@@ -268,6 +306,6 @@ try {
   app.setSpeed(1);app.reset();app.resetCamera();app.startNext();app.advanceTime(2.4);app.startNext();app.advanceTime(1.6);
   check(byId('error').hidden,'no renderer error');
   check(!performance.getEntriesByType('resource').some(entry=>/multiregion-core|flow-renderer|probability-flow|shaders\//.test(entry.name)),'physics core and resources never requested');
-  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: mean planes and exact mixer shifts, fixed references through both mixer modes and rewind, phase-aware tiles and complex-component means, guide visibility and probability-view exclusion, direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
+  report.textContent=`PASS · ${checks} checks\nAll 2×2–5×5 grids: moving mean planes with exactly the same displacement as columns in every combined round, zero crossing and final mean, live separate-gate means, pause and rewind, phase-aware moving tiles, complex-component means, guide visibility and probability-view exclusion, direct combined mixer interpolation, exact signed endpoints, Previous step in both modes with restored columns and iteration history, cancellation of paused autoplay, camera and selection preservation, Combine toggle, normalized animation, separate-mode Hadamard and initial-flip signs, complex views, step order, success probabilities, pause/reset, autoplay, layout, zero-height/below-plane cameras, picking, orbit/zoom/pinch, and recording clock.`;
   report.dataset.status='passed';report.dataset.checks=checks;
 } catch(error) {report.textContent=`FAIL after ${checks} checks\n${error.stack}`;report.dataset.status='failed';console.error(error);}

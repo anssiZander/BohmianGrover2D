@@ -224,11 +224,11 @@ export class HistogramRenderer {
     };
     if (guide.uniform) {
       plane(0,0,side/2+.08,guide.values[0]);
-      if (guide.showResult) plane(0,0,side/2+.08,guide.outputValues[0],true);
+      if (guide.showResult && Math.abs(guide.values[0]-guide.outputValues[0])>1e-6) plane(0,0,side/2+.08,guide.outputValues[0],true);
     } else for (let q = 0; q < side*side; q++) {
       const [x,,z] = columnCenter(q,side);
       plane(x,z,.43,guide.values[q]);
-      if (guide.showResult) plane(x,z,.43,guide.outputValues[q],true);
+      if (guide.showResult && Math.abs(guide.values[q]-guide.outputValues[q])>1e-6) plane(x,z,.43,guide.outputValues[q],true);
     }
     return {triangles, lines};
   }
@@ -246,27 +246,30 @@ export class HistogramRenderer {
     };
     if (guide.uniform) {
       const mean = guide.values[0], a = project([ax,columnHeight(mean,side),az],this.camera);
-      label(`${guide.showResult ? 'Input ' : ''}μ ${formatAmplitude(mean)}`,a.x+7,a.y-24,gold);
+      label(`Mean μ ${formatAmplitude(mean)}`,a.x+7,a.y-24,gold);
       if (guide.showResult) {
-        const b = project([ax,columnHeight(-mean,side),az],this.camera);
-        label(`After −μ ${formatAmplitude(-mean)}`,b.x+7,b.y+(Math.abs(a.y-b.y)<27?2:-10),violet);
-        // The arrow spans μ to −μ, a displacement of −2μ. It is a guide to
-        // the full operation, including while the separate gates are shown.
-        const start = project([-ax,columnHeight(mean,side),-az],this.camera);
-        const end = project([-ax,columnHeight(-mean,side),-az],this.camera);
+        const input = guide.inputValues[0], output = guide.outputValues[0];
+        if (Math.abs(mean-output)>1e-6) {
+          const b = project([ax,columnHeight(output,side),az],this.camera);
+          label(`Final −μ₀ ${formatAmplitude(output)}`,b.x+7,b.y+(Math.abs(a.y-b.y)<27?2:-10),violet);
+        }
+        // The plane follows the current amplitudes. The arrow retains the full
+        // displacement from the mixer input mean μ₀ to the final mean −μ₀.
+        const start = project([-ax,columnHeight(input,side),-az],this.camera);
+        const end = project([-ax,columnHeight(output,side),-az],this.camera);
         if (Math.hypot(start.x-end.x,start.y-end.y)>15) {
           const angle = Math.atan2(end.y-start.y,end.x-start.x);
           ctx.strokeStyle = gold; ctx.lineWidth = 1.5; ctx.beginPath();
           ctx.moveTo(start.x,start.y);ctx.lineTo(end.x,end.y);
           for (const turn of [-.5,.5]) {ctx.moveTo(end.x,end.y);ctx.lineTo(end.x-7*Math.cos(angle+turn),end.y-7*Math.sin(angle+turn));}
           ctx.stroke();ctx.lineWidth = 1;
-          label(`Δ ${formatAmplitude(-2*mean)}`,(start.x+end.x)/2-7,(start.y+end.y)/2-10,gold,'right');
+          label(`Δ ${formatAmplitude(guide.shifts[0])}`,(start.x+end.x)/2-7,(start.y+end.y)/2-10,gold,'right');
         }
       }
     }
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '10px "Segoe UI", sans-serif';
     ctx.fillStyle = gold;
-    const caption = guide.uniform ? (guide.showResult ? 'FULL MIXER  a′ = a − 2μ' : 'MEAN AMPLITUDE  μ') : 'MIXER REFERENCE  pⱼ = sⱼ⟨s|a⟩';
+    const caption = guide.uniform ? (guide.showResult ? 'FULL MIXER  a′ = a − 2μ₀' : 'MEAN AMPLITUDE  μ') : 'MIXER REFERENCE  pⱼ = sⱼ⟨s|a⟩';
     ctx.fillText(caption,12,48);
     occupied.push({x:8,y:38,w:ctx.measureText(caption).width+8,h:20});
     ctx.textAlign = 'center';
