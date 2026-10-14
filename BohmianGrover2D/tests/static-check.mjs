@@ -27,6 +27,6 @@ for (const file of ['main.js', 'grover-geometry.js', 'flow-renderer.js', 'probab
     await read(path.slice(2).split('?')[0]);
   }
 }
-if (!recording.includes('window.BohmianGrover2D') || !recording.includes('grover-multiregion-4x4-')) throw new Error('Missing recording bridge or filename');
+if (!recording.includes('window.BohmianGrover2D') || !recording.includes('grover-multiregion-${side}x${side}-')) throw new Error('Missing recording bridge or filename');
 console.log(`${required.length} DOM references and all sphere nodes present; HTML IDs unique.`);
 console.log(`${shaders.length} WebGL2 shader sources and all local page assets present; recording bridge intact.`);

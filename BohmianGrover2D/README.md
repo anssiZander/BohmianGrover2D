@@ -1,6 +1,7 @@
 # Grover Search 2D — MultiRegion
 
-A single continuous 2D wave encodes 16 logical outcomes in a 4×4 arrangement.
+A single scalar 2D wave encodes N² logical outcomes on selectable 2×2, 3×3,
+4×4 and 5×5 grids (default 4×4). This branch has no spin degree of freedom.
 This branch uses exact continuous unitary mode gates, displayed with the original
 rainbow phase and density palettes, dark blue panels, cyan grid, green initial
 outline and crimson target outline.
@@ -20,7 +21,7 @@ render targets is required. No dependencies or build step are needed.
 
 ## GitHub Pages updates
 
-Page assets and all module imports share a `?v=20260929-ui1` release suffix.
+Page assets and all module imports share a `?v=20261014-grids2` release suffix.
 Shader requests inherit it from `main.js`. This prevents a browser from pairing
 new HTML with cached scripts or shaders from a previous release.
 Before publishing changed assets, replace this release value across `index.html`
@@ -31,14 +32,20 @@ hard refresh (Ctrl+Shift+R) retrieves the new page if an existing tab is stale.
 
 ## Controls and readouts
 
+- **Grid size** selects 2×2 through 5×5. Changing it resets the wave, particles,
+  trails, clock, pause and iteration history, including during a running search.
+  Selected coordinates survive where possible and clamp to the new boundary.
+  The circuit shows two N-level position registers; labels, goal regions,
+  Bloch projection and recording filenames follow the chosen size.
+
 - Choose the initial state and goal directly on the main wave. The compact
   guide shares the title margin, leaving the main grid large. Click an initial
   square, select **Next: choose goal**, click a goal square, and select **Done**.
   **Back: initial** revisits the input; **Choose states** starts selection again.
-  The sidebar selector has been removed. The grid remains fixed at 4x4.
+  The sidebar goal selector has been removed; use the main wave for state selection.
 - Run immediately to use the existing defaults, input `|0000⟩` and goal
   `|1111⟩`. **Apply next operation** and **Run full search** sit side by side;
-  individual gate buttons have been removed. A full search runs three iterations.
+  individual gate buttons have been removed. A full search runs the optimal number of iterations for the chosen size.
   Both choices survive Reset and full runs. Selecting a state resets the search,
   and selection is locked during running or paused gates.
 - **Initial / goal markers**, below the wave, hides both colored outlines,
@@ -52,7 +59,7 @@ hard refresh (Ctrl+Shift+R) retrieves the new page if an existing tab is stale.
 - **Pause**, **Reset**, and gate speed control the same gate clock. Space toggles
   pause when a form control is not focused; R resets. Brightness and phase/grid
   toggles affect only the display.
-- The circuit highlights the active gate. Its three iteration badges retain the
+- The circuit highlights the active gate. Its iteration badges retain the
   marked probabilities at the completed diffuser checkpoints.
 - The effective Bloch sphere follows the actual complex amplitudes. Drag it or
   use its arrow keys to orbit; Home or Reset view restores the camera. Its gold
@@ -74,26 +81,39 @@ hard refresh (Ctrl+Shift+R) retrieves the new page if an existing tab is stale.
 - **Particles inside goal box** is a finite-sample estimate of the spatial
   probability. Compare it with **Inside goal box**, not the logical percentage.
 
-The labels use `|x₁x₀y₁y₀⟩`. Columns increase left to right and rows bottom to top.
+Labels are binary for 2×2 and 4×4, and `|x,y⟩` for 3×3 and 5×5.
+At the default 4×4 size they use `|x₁x₀y₁y₀⟩`. Columns increase left to right and rows bottom to top.
 The upper-left box is `|0011⟩`, upper-right `|1111⟩`, lower-left `|0000⟩`, and
 lower-right `|1100⟩`.
 
 The percentages on the grid are **logical-mode probabilities**. The diagnostic
 **Inside goal box** integrates the continuous spatial density over the selected
-quarter-by-quarter region. These differ because orthogonal packets have
+1/N by 1/N region. These differ because orthogonal packets have
 overlapping spatial tails. Neither the display grid nor the target tint changes
 the Hamiltonian or clips the wave into disconnected boxes.
+
+
+## Grid sizes and stopping points
+
+The first peak uses `round(pi/(4 asin(1/N)) - 1/2)` iterations.
+
+| Grid | Scalar states | Iterations | Final marked probability |
+| --- | ---: | ---: | ---: |
+| 2×2 | 4 | 1 | 100.000000% |
+| 3×3 | 9 | 2 | 98.360684% |
+| 4×4 | 16 | 3 | 96.131897% |
+| 5×5 | 25 | 3 | 97.421006% |
 
 ## Spatial encoding
 
 On the unit interval use normalized sine modes
-`u_n(x) = sqrt(2) sin(n pi x)`, `n = 1,2,3,4`.
-An orthogonal discrete sine transform constructs four localized packets:
+`u_n(x) = sqrt(2) sin(n pi x)`, `n = 1,...,N`.
+An orthogonal discrete sine transform constructs N localized packets:
 
 ```text
-f_j(x) = sum_n T[j,n] u_n(x),                 j = 0,1,2,3
-T[j,n] = sqrt(2/4) sin((j+1/2)n pi/4),        n = 1,2,3
-T[j,4] = (1/sqrt(4)) sin((j+1/2)pi).
+f_j(x) = sum_n T[j,n] u_n(x),                 j = 0,...,N-1
+T[j,n] = sqrt(2/N) sin((j+1/2)n pi/N),        n = 1,...,N-1
+T[j,N] = (1/sqrt(N)) sin((j+1/2)pi).
 phi_jk(x,y) = f_j(x) f_k(y).
 ```
 
@@ -102,17 +122,30 @@ dominant peak in its labeled region. With two packets the same transform reduces
 to the original `(u_1 +/- u_2)/sqrt(2)` construction.
 
 The full wave is `psi(x,y,t) = sum_jk c_jk(t) phi_jk(x,y)`. It always lies in the
-specified 16-dimensional subspace. The initial state is the chosen packet
+specified N²-dimensional subspace. The initial state is the chosen packet
 `|i⟩` (default `phi_00`). Preparation gives `H|i⟩`, with coefficients
-`c_q = (-1)^popcount(q & i)/4`, hence logical probability `1/16` in every mode.
-For the default input all coefficients are positive; other inputs have
-Hadamard signs, visible in the phase view. Equal logical probabilities do not
+`|c_q| = 1/N`, hence logical probability `1/N²` in every mode.
+At N=4 the unchanged coefficients are `c_q = (-1)^popcount(q & i)/4`.
+For the default input all coefficients are positive. Other inputs have
+Hadamard signs (N=2,4) or complex phases (N=3,5), visible in the phase view. Equal logical probabilities do not
 imply perfectly flat spatial density.
 
 ## Exact gate dynamics
 
-Let `H = H_Had^(tensor 4)` in the logical packet basis. This is Hermitian and
-unitary: `H^dagger = H` and `H^2 = I`. Preparation and forward mixing use
+For N=2 or 4, keep `H = H_Had^(tensor 2log2(N))` in the logical packet basis.
+The original 4×4 Hamiltonian, durations and continuous path are unchanged.
+An odd number of states cannot use that qubit Hadamard. For N=3 or 5 use
+the balanced Hermitian matrix
+
+```text
+H[(x,y),(u,v)] = exp(2*pi*i*(x*v-y*u)/N)/N.
+```
+
+Character orthogonality gives `H^2=I`; conjugating an entry transposes its
+indices, so `H^dagger=H`. Every entry has magnitude `1/N`, giving balanced
+preparation from every selected input. This is an explicitly non-free mixer.
+All four sizes use the same projector Hamiltonian and its signed-time inverse:
+
 
 ```text
 H_mix = pi hbar (I - H) / (2T)
@@ -138,8 +171,8 @@ then each iteration runs `oracle -> H^dagger -> reference -> H`. The implemented
 diffuser `H (I-2|i><i|) H^dagger` differs from the conventional `2|s><s|-I` only
 by a global minus sign, with `|s⟩ = H|i⟩`. The full spatial phase is displayed, including this sign.
 
-For one marked state among 16, the logical target probability after `k` iterations
-is `sin^2((2k+1) asin(1/4))`:
+For one marked state among N², the target probability after `k` iterations is
+`sin^2((2k+1) asin(1/N))`. At the default N=4:
 
 | Iterations | Target probability |
 | --- | ---: |
@@ -148,11 +181,11 @@ is `sin^2((2k+1) asin(1/4))`:
 | 2 | 90.844727% |
 | 3 | 96.131897% |
 
-The automatic run stops after three iterations. Standard pi-phase gates do not
-give exactly 100% for this state count.
+At N=4 the automatic run stops after three iterations. Standard pi-phase gates
+do not give exactly 100% for that state count; N=2 reaches 100% in one iteration.
 
 This is an **ideal mode-coupling Hamiltonian**, not the free-box Hamiltonian from
-the four-state branch. The sine functions supply a spatial encoding; their
+the free-mixing branches. The sine functions supply a spatial encoding; their
 kinetic-energy phases are not added during these gates. Gate durations (2.4 for
 mixers, 1.6 for phase pulses at speed 1) set the pedagogical playback time and
 corresponding effective coupling strength. No ordinary phase-gradient particle
@@ -186,7 +219,7 @@ Dc = 2 Re(conj(F)*G), Ds = 2 Im(conj(F)*G)
 partial_t rho = (direction*pi/T) [-Dc*sin(theta) + Ds*cos(theta)].
 ```
 
-Products of sine modes 1..4 contain only cosine frequencies 0..8 on each axis.
+Products of sine modes 1..N contain only cosine frequencies 0..2N on each axis.
 The Poisson problem therefore has a finite analytic spectral solution: divide
 each nonconstant cosine coefficient of `partial_t rho` by
 `pi^2*(n^2+m^2)` to get the corresponding coefficient of `chi`. The constant
@@ -217,7 +250,7 @@ the wave and particles together, with all visible overlays in the capture.
   probability integrals, Bloch projection, and checkpointed clock.
 - `main.js`: controls, circuit synchronization, WebGL2 resources, and recording.
 - `shaders/mode_wave.frag`: reconstructs the complex wave on a 512×512 RGBA32F
-  GPU texture from its sine coefficients. Only 16 complex amplitudes evolve on
+  GPU texture from its sine coefficients. Only N² complex amplitudes evolve on
   the CPU. `shaders/multiregion_render.frag` renders phase and density.
 - `grover-geometry.js`: the interactive sphere, driven by those same amplitudes.
 - `probability-flow.js`: exact density-source/Poisson coefficients and Born
@@ -229,9 +262,10 @@ arrow fragment shader are reused to preserve their color and edge treatment.
 
 ```powershell
 node tests/static-check.mjs
-node --test tests/multiregion.test.mjs
-node --test tests/flow.test.mjs
-node --test tests/initial-state.test.mjs
+node --experimental-default-type=module --test tests/multiregion.test.mjs
+node --experimental-default-type=module --test tests/flow.test.mjs
+node --experimental-default-type=module --test tests/grid-sizes.test.mjs
+node --experimental-default-type=module --test tests/initial-state.test.mjs
 ```
 
 For reproducible browser/GPU checks, open `/tests/browser-check.html` on the same
@@ -243,3 +277,8 @@ region counts and 8×8 spatial histograms, every target, pause, visibility, and
 the recording clock.
 `/tests/trail-browser-check.html` checks GPU trail accumulation/fading, length
 changes without disturbing the state, pause/reset, and recording exposure.
+
+`/tests/grid-browser-check.html` verifies every supported size, GPU wave and
+current readbacks, complete searches, particle distributions, click mapping,
+pause and resizing during playback. The existing 4×4 numerical references
+remain independent regression checks for the original gate implementations.

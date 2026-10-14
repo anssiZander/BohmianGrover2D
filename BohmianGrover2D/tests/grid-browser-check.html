@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"/><title>Grid-size browser verification</title><link rel="icon" href="data:,"/>
+<body style="background:#061124;color:#d4e6ff;font:13px monospace">Loading the production page…
+<script type="module">
+const response = await fetch('../index.html'), source = await response.text();
+const bodyEnd = '<' + '/body>';
+const html = source.replace('<head>', '<head><base href="../"/>')
+  .replace(bodyEnd, '<script type="module" src="./tests/grid-browser-check.js"><' + '/script>' + bodyEnd);
+document.open(); document.write(html); document.close();
+</script></body></html>

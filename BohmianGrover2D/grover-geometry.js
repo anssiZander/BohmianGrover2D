@@ -1,13 +1,15 @@
-import { STATE_COUNT, ITERATIONS, LABELS, evolveGate, projectGroverState } from './multiregion-core.js?v=20260929-ui1';
+import { modelOfState, expectedProbability, evolveGate, projectGroverState } from './multiregion-core.js?v=20261014-grids2';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 const gateNames = { input: 'Input', prepare: 'Prepare H', oracle: 'Oracle Oω', inverse: 'Inverse H†', reference: 'Reference Sᵢ', forward: 'Forward H' };
-const descriptions = {
-  prepare: 'The exact unitary mixer creates equal probabilities in all 16 modes. The cyan point marks the prepared state |s⟩.',
+function descriptions(model, initial) { return {
+  input: 'Start in the selected logical packet |'+model.labels[initial]+'⟩. Preparation spreads probability over all '+model.stateCount+' modes.',
+  prepare: 'The exact unitary mixer creates equal probabilities in all '+model.stateCount+' modes. The cyan point marks the prepared state |s⟩.',
   oracle: 'The oracle turns the marked amplitude through π. All logical probabilities stay fixed during this phase gate.',
   inverse: 'The inverse unitary follows the opposite Hamiltonian sign. The normalized projection stays on the sphere; its weight can change.',
+  reference: 'A π phase pulse on |'+model.labels[initial]+'⟩ is the central operation of the diffuser.',
   forward: 'The forward mixer completes this Grover iteration. Interference increases the marked amplitude.',
-};
+}; }
 
 export function createGroverGeometry(root) {
   const get = name => root.querySelector(`[data-geometry="${name}"]`);
@@ -71,7 +73,8 @@ export function createGroverGeometry(root) {
   function draw() {
     if (!frame || root.hidden) return;
     camera();
-    const viewKey = `${yaw}/${pitch}`;
+    const { stateCount: STATE_COUNT } = modelOfState(frame.startAmplitudes);
+    const viewKey = `${yaw}/${pitch}/${STATE_COUNT}`;
     if (viewKey !== gridKey) {
       gridKey = viewKey;
       const circles = [];
@@ -148,6 +151,7 @@ export function createGroverGeometry(root) {
   return {
     update({ target, initial = 0, kind = 'input', progress = 0, running = false, paused = false,
       iteration = 0, complete = false, amplitudes, startAmplitudes = amplitudes, stepKey = 'input' }) {
+      const model = modelOfState(amplitudes), { side, labels: LABELS, iterations: ITERATIONS } = model;
       progress = clamp01(progress);
       const key = `${stepKey}/${progress}/${running}/${paused}`;
       if (key === lastKey) return;
@@ -158,11 +162,10 @@ export function createGroverGeometry(root) {
       nodes.target.textContent = `Target |${LABELS[target]}⟩`;
       const inputText = `|${LABELS[initial]}⟩`;
       const gateName = kind === 'input' ? 'Input '+inputText : kind === 'reference' ? 'Reference '+inputText : gateNames[kind];
-      const description = kind === 'input' ? 'Start in the selected logical packet '+inputText+'. Preparation spreads probability over all 16 modes.' : kind === 'reference' ? 'A π phase pulse on '+inputText+' is the central operation of the diffuser.' : descriptions[kind];
       const round = iteration ? `Round ${iteration}/${ITERATIONS} · ` : '';
       nodes.status.textContent = complete ? 'Search complete' : `${round}${gateName}${running ? ` · ${paused ? 'paused · ' : ''}${Math.round(100 * progress)}%` : kind !== 'input' ? ' · held' : ''}`;
       nodes.description.textContent = !state.bloch.vector ? 'The projection has zero weight, so its direction is undefined.'
-        : complete ? 'Three Grover iterations reach 96.1% marked probability. The vector stops near the marked pole; standard π pulses do not reach exactly 100% for 16 states.' : description;
+        : complete ? ITERATIONS+' Grover iterations reach '+percent(expectedProbability(ITERATIONS,side))+' marked probability.' : descriptions(model, initial)[kind];
       nodes.markedValue.textContent = percent(state.targetProbability);
       nodes.weightValue.textContent = percent(state.bloch.weight);
       nodes.outsideValue.textContent = percent(state.outsideProbability);

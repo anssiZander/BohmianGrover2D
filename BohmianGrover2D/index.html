@@ -5,13 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Grover Search 2D — 16 Regions</title>
   <link rel="icon" href="data:,"/>
-  <link rel="stylesheet" href="./styles.css?v=20260929-ui1"/>
+  <link rel="stylesheet" href="./styles.css?v=20261014-grids2"/>
 </head>
 <body>
 <div id="wrap">
   <aside id="ui" class="panel">
-    <div class="head"><h3>Grover Search · 4×4</h3><button id="minui" class="mini" aria-expanded="true" aria-label="Collapse controls">−</button></div>
+    <div class="head"><h3 id="appTitle">Grover Search · 4×4</h3><button id="minui" class="mini" aria-expanded="true" aria-label="Collapse controls">−</button></div>
     <div id="uibody">
+      <div class="section">Search space</div>
+      <div class="row"><label for="gridSize">Grid size</label><input id="gridSize" type="range" min="2" max="5" step="1" value="4" aria-describedby="gridSummary"/><span id="gridSizeValue" class="val">4×4</span></div>
+      <p id="gridSummary" class="note">16 spatial states. Changing size resets the search.</p>
       <div class="section">Gates</div>
       <div class="ops">
         <button id="next">Apply next operation</button>
@@ -37,7 +40,7 @@
   </aside>
 
   <main id="stage">
-    <header id="waveHeader"><div class="waveHeading"><span class="eyebrow">ONE 2D WAVE · 16 LOGICAL MODES</span><h1>Grover search</h1></div><div class="stateBadges"><div class="initialBadge"><span id="waveInitial">INITIAL |0000⟩</span></div><div class="targetBadge"><span id="waveTarget">MARKED |1111⟩</span><b id="waveProbability">0.0%</b></div></div>
+    <header id="waveHeader"><div class="waveHeading"><span id="stateCountLabel" class="eyebrow">ONE 2D WAVE · 16 LOGICAL MODES</span><h1>Grover search</h1></div><div class="stateBadges"><div class="initialBadge"><span id="waveInitial">INITIAL |0000⟩</span></div><div class="targetBadge"><span id="waveTarget">MARKED |1111⟩</span><b id="waveProbability">0.0%</b></div></div>
     <div id="selectionGuide" data-step="initial">
       <div class="selectionMessage" role="status" aria-live="polite"><strong id="selectionTitle">1 · Initial state (green)</strong><p id="selectionHint">Click an initial square, then choose the goal. Or run with the current choices.</p></div>
       <div class="selectionActions"><button id="selectionBack" type="button" hidden>Back: initial</button><button id="selectionNext" type="button">Next: choose goal</button></div>
@@ -48,18 +51,16 @@
   </main>
 
   <aside id="rightColumn">
-    <section id="circuitPanel" class="panel" aria-label="Four-qubit Grover quantum gate circuit">
+    <section id="circuitPanel" class="panel" aria-label="Grover circuit: two 4-level position registers">
       <div class="head"><h3>Quantum gate circuit</h3><button id="circuitToggle" class="mini" type="button" aria-expanded="true" title="Minimize circuit diagram">−</button></div>
       <div class="circuitBody">
         <svg class="circuitSvg" viewBox="0 0 840 188" role="img" aria-labelledby="circuitTitle circuitDescription">
-          <title id="circuitTitle">Four-qubit Grover gate circuit</title><desc id="circuitDescription">Preparation runs once. Oracle, inverse mixer, reference phase, and forward mixer repeat three times. The active gate is highlighted.</desc>
-          <line class="circuitWireGlow" x1="90" y1="42" x2="812" y2="42"/><line class="circuitWire" x1="90" y1="42" x2="812" y2="42"/><text class="circuitInput" x="6" y="48">|0⟩</text><text class="circuitBit" x="51" y="46">x₁</text>
-<line class="circuitWireGlow" x1="90" y1="67" x2="812" y2="67"/><line class="circuitWire" x1="90" y1="67" x2="812" y2="67"/><text class="circuitInput" x="6" y="73">|0⟩</text><text class="circuitBit" x="51" y="71">x₀</text>
-<line class="circuitWireGlow" x1="90" y1="92" x2="812" y2="92"/><line class="circuitWire" x1="90" y1="92" x2="812" y2="92"/><text class="circuitInput" x="6" y="98">|0⟩</text><text class="circuitBit" x="51" y="96">y₁</text>
-<line class="circuitWireGlow" x1="90" y1="117" x2="812" y2="117"/><line class="circuitWire" x1="90" y1="117" x2="812" y2="117"/><text class="circuitInput" x="6" y="123">|0⟩</text><text class="circuitBit" x="51" y="121">y₀</text>
+          <title id="circuitTitle">Grover circuit: two 4-level position registers</title><desc id="circuitDescription">Preparation runs once. Oracle, inverse mixer, reference phase, and forward mixer repeat three times. The active gate is highlighted.</desc>
+          <line class="circuitWireGlow" x1="90" y1="55" x2="812" y2="55"/><line class="circuitWire" x1="90" y1="55" x2="812" y2="55"/><text class="circuitInput" x="6" y="61">|0⟩</text><text id="circuitXLabel" class="circuitBit" x="45" y="59">x (4)</text>
+<line class="circuitWireGlow" x1="90" y1="105" x2="812" y2="105"/><line class="circuitWire" x1="90" y1="105" x2="812" y2="105"/><text class="circuitInput" x="6" y="111">|0⟩</text><text id="circuitYLabel" class="circuitBit" x="45" y="109">y (4)</text>
           <g class="circuitGate future" data-circuit-kind="prepare"><rect class="gateBox" x="112" y="23" width="82" height="114" rx="9"/><text class="gateText" x="153" y="87">H</text><text class="gateCaption" x="153" y="155">PREPARE</text><text class="gateTick" x="179" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="oracle"><rect class="gateBox" x="231" y="23" width="82" height="114" rx="9"/><text class="gateText" x="272" y="87">Oω</text><text class="gateCaption" x="272" y="155">ORACLE</text><text class="gateTick" x="298" y="39">✓</text></g>
-<g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text class="gateText" x="408" y="87">H</text><text class="gateCaption" x="408" y="155">INVERSE</text><text class="gateTick" x="434" y="39">✓</text></g>
+<g class="circuitGate future" data-circuit-kind="inverse"><rect class="gateBox" x="367" y="23" width="82" height="114" rx="9"/><text class="gateText" x="408" y="87">H</text><text id="inverseCaption" class="gateCaption" x="408" y="155">INVERSE</text><text class="gateTick" x="434" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="reference"><rect class="gateBox" x="486" y="23" width="82" height="114" rx="9"/><text class="gateText" x="527" y="87">Sᵢ</text><text class="gateCaption" x="527" y="155">REF. PHASE</text><text class="gateTick" x="553" y="39">✓</text></g>
 <g class="circuitGate future" data-circuit-kind="forward"><rect class="gateBox" x="605" y="23" width="82" height="114" rx="9"/><text class="gateText" x="646" y="87">H</text><text class="gateCaption" x="646" y="155">FORWARD</text><text class="gateTick" x="672" y="39">✓</text></g>
           <path class="diffuserBrace" d="M355 166v6h344v-6"/><text class="diffuserLabel" x="527" y="186">DIFFUSER D = H Sᵢ H</text>
@@ -119,11 +120,11 @@
       </figure>
     </details>
       <div id="phaseLegendPanel" class="phaseLegend" aria-label="Phase color legend"><div class="phaseWheel" role="img" aria-label="Rainbow phase wheel"></div><div class="phaseLabels"><b>Phase hue</b><br>red: 0<br>yellow-green: +π/2<br>cyan: ±π<br>violet-blue: −π/2</div></div>
-      <details class="theory"><summary>About the wave and gates</summary><p>Each box labels an orthogonal logical mode built from four sine eigenmodes along each axis. Packets overlap, so the probability of a logical mode differs from probability inside its geometrical box.</p><p>The bit order is |x₁x₀y₁y₀⟩. Columns increase left to right; rows increase bottom to top. Choose the initial mode |i⟩ and the goal on the main wave using the guide beside the title. The default initial mode is |0000⟩. The reference phase acts on the chosen |i⟩, so the diffuser reflects about H|i⟩.</p><div class="math">H = H<sub>Had</sub><sup>⊗4</sup><br>ℋ<sub>mix</sub> = πℏ(I − H)/(2T)</div><p>Preparation and forward mixing use exp(−iℋ<sub>mix</sub>t/ℏ); inverse mixing uses the opposite sign. Phase gates use exact mode-projector exponentials. These are ideal mode operations, rather than free-box propagation. The wave evolves unitarily at every instant.</p><p>Three standard Grover iterations give 96.1319% marked-mode probability. All gates and the wave hold still at checkpoints and when paused.</p><div class="math">j = ∇χ &nbsp; · &nbsp; ∇²χ = −∂ρ/∂t<br>Particle velocity: v = j / ρ</div><p>The arrows show a conserved spatial current derived from the exact density change, with zero flow through the outer walls. We choose the curl-free solution. This is a generalized probability-transport model; the nonlocal gate Hamiltonian does not uniquely determine continuous particle paths.</p><p>Particle fractions sample the spatial density and should track “Inside goal box.” Arrow length indicates current strength, with a compressed display scale. Pause freezes the instantaneous arrows and all trajectories for inspection.</p></details>
+      <details class="theory"><summary>About the wave and gates</summary><p>Each box labels an orthogonal logical mode built from N sine eigenmodes along each axis, with N selectable from 2 to 5. Packets overlap, so the probability of a logical mode differs from probability inside its geometrical box.</p><p>Labels use binary position registers for 2×2 and 4×4, and |x,y⟩ for 3×3 and 5×5. Columns increase left to right; rows increase bottom to top. Choose the initial mode |i⟩ and the goal on the main wave using the guide beside the title. The default initial mode is |0000⟩. The reference phase acts on the chosen |i⟩, so the diffuser reflects about H|i⟩.</p><div class="math">H = H<sub>Had</sub><sup>⊗2log₂N</sup> (N = 2, 4)<br>H<sub>xy,uv</sub> = e<sup>2πi(xv−yu)/N</sup>/N (N = 3, 5)<br>ℋ<sub>mix</sub> = πℏ(I − H)/(2T)</div><p>Both mixers satisfy H† = H and H² = I, with equal probabilities from every input. Preparation and forward mixing use exp(−iℋ<sub>mix</sub>t/ℏ); inverse mixing uses the opposite sign. Phase gates use exact mode-projector exponentials. These are ideal mode operations, rather than free-box propagation. The wave evolves unitarily at every instant.</p><p>The first optimal Grover peak takes 1, 2, 3 or 3 iterations for 2×2, 3×3, 4×4 or 5×5 respectively. All gates and the wave hold still at checkpoints and when paused.</p><div class="math">j = ∇χ &nbsp; · &nbsp; ∇²χ = −∂ρ/∂t<br>Particle velocity: v = j / ρ</div><p>The arrows show a conserved spatial current derived from the exact density change, with zero flow through the outer walls. We choose the curl-free solution. This is a generalized probability-transport model; the nonlocal gate Hamiltonian does not uniquely determine continuous particle paths.</p><p>Particle fractions sample the spatial density and should track “Inside goal box.” Arrow length indicates current strength, with a compressed display scale. Pause freezes the instantaneous arrows and all trajectories for inspection.</p></details>
     </section>
   </aside>
 </div>
-<script src="./recording.js?v=20260929-ui1"></script>
-<script type="module" src="./main.js?v=20260929-ui1"></script>
+<script src="./recording.js?v=20261014-grids2"></script>
+<script type="module" src="./main.js?v=20261014-grids2"></script>
 </body>
 </html>

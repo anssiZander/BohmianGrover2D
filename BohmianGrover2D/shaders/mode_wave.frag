@@ -1,8 +1,9 @@
 #version 300 es
 precision highp float;
 
-uniform vec2 uCoefficients[16];
+uniform vec2 uCoefficients[25];
 uniform float uGridSize;
+uniform int uSide;
 out vec4 fragColor;
 
 void main() {
@@ -13,11 +14,13 @@ void main() {
     return;
   }
   const float PI = 3.141592653589793;
-  vec4 sx = sin(PI * xy.x * vec4(1.0, 2.0, 3.0, 4.0));
-  vec4 sy = sin(PI * xy.y * vec4(1.0, 2.0, 3.0, 4.0));
+  float sx[5], sy[5];
+  for (int n = 0; n < uSide; n++) {
+    sx[n] = sin(PI * xy.x * float(n + 1)); sy[n] = sin(PI * xy.y * float(n + 1));
+  }
   vec2 psi = vec2(0.0);
-  for (int n = 0; n < 4; ++n) for (int m = 0; m < 4; ++m) {
-    psi += uCoefficients[4*n+m] * (2.0 * sx[n] * sy[m]);
+  for (int n = 0; n < uSide; ++n) for (int m = 0; m < uSide; ++m) {
+    psi += uCoefficients[uSide*n+m] * (2.0 * sx[n] * sy[m]);
   }
   fragColor = vec4(psi, dot(psi, psi), 1.0);
 }

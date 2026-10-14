@@ -1,9 +1,9 @@
-import { gateFlow, sampleInitialParticles } from './probability-flow.js?v=20260929-ui1';
+import { gateFlow, sampleInitialParticles } from './probability-flow.js?v=20261014-grids2';
 
 export class FlowRenderer {
   constructor(gl, grid, loadShader, createProgram) {
     Object.assign(this,{gl,grid,loadShader,createProgram});
-    this.count=4000;this.index=0;this.trailIndex=0;this.gate=null;this.newGate=false;
+    this.side=4;this.initial=0;this.count=4000;this.index=0;this.trailIndex=0;this.gate=null;this.newGate=false;
     this.trailSize=1024;this.trailScale=1;this.elapsed=0;this.statsTime=-Infinity;
   }
   async init(vertex) {
@@ -15,7 +15,7 @@ export class FlowRenderer {
       loadShader('flow_trail.frag'),loadShader('flow_trail_composite.frag'),loadShader('flow_trail_fade.frag'),
     ]);
     const program=this.createProgram;
-    this.basis=program(vertex,basis,['uFixed[0]','uRotating[0]','uPotential[0]','uGridSize']);
+    this.basis=program(vertex,basis,['uFixed[0]','uRotating[0]','uPotential[0]','uGridSize','uSide','uModes']);
     this.update=program(update.replace('// FLOW_SAMPLE',shared),empty,
       ['uWaveParts','uCurrentParts','uDirection','uEnd','uNewGate'],['nextState']);
     this.points=program(points,dots,['uPointSize','uDotSigma','uDotGain']);
@@ -73,9 +73,10 @@ export class FlowRenderer {
     for(const fbo of this.trailFbos) {gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   }
-  reset(count=this.count,initial=this.initial??0) {
+  reset(count=this.count,initial=this.initial,side=this.side) {
+    this.side=side;this.initial=initial;this.newGate=false;this.stats=null;
     this.count=count;this.initial=initial;this.gate=null;this.data=null;this.index=0;this.elapsed=0;this.statsTime=-Infinity;
-    const gl=this.gl,states=sampleInitialParticles(count,73991,initial);
+    const gl=this.gl,states=sampleInitialParticles(count,73991,initial,side);
     for(const buffer of this.buffers) {gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,states,gl.DYNAMIC_COPY);}
     gl.bindBuffer(gl.ARRAY_BUFFER,null);this.clearTrails();
   }
@@ -86,6 +87,7 @@ export class FlowRenderer {
     const gl=this.gl,u=this.basis.uniforms;
     gl.disable(gl.BLEND);gl.bindVertexArray(this.emptyVao);gl.bindFramebuffer(gl.FRAMEBUFFER,this.basisFbo);
     gl.viewport(0,0,this.grid,this.grid);gl.useProgram(this.basis.program);
+    gl.uniform1i(u.uSide,this.data.side);gl.uniform1i(u.uModes,this.data.modes);
     gl.uniform2fv(u['uFixed[0]'],Float32Array.from(this.data.f));gl.uniform2fv(u['uRotating[0]'],Float32Array.from(this.data.g));
     gl.uniform2fv(u['uPotential[0]'],this.data.potential);gl.uniform1f(u.uGridSize,this.grid);
     gl.drawArrays(gl.TRIANGLES,0,3);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -158,11 +160,11 @@ export class FlowRenderer {
   }
   statistics(target,progress,force=false) {
     if(!force&&this.elapsed-this.statsTime<.3&&this.stats?.target===target) return this.stats;
-    const data=this.readParticles(),bins=new Array(16).fill(0);let invalid=0,failures=0,lag=0,lagging=0,slowest=null;
+    const data=this.readParticles(),bins=new Array(this.side*this.side).fill(0);let invalid=0,failures=0,lag=0,lagging=0,slowest=null;
     for(let i=0;i<this.count;i++) {
       const x=data[4*i],y=data[4*i+1];
       if(!Number.isFinite(x)||!Number.isFinite(y)||x<=0||x>=1||y<=0||y>=1) invalid++;
-      else bins[4*Math.floor(4*x)+Math.floor(4*y)]++;
+      else bins[this.side*Math.floor(this.side*x)+Math.floor(this.side*y)]++;
       failures+=data[4*i+3];
       if(!this.newGate) {
         const behind=progress-data[4*i+2];if(behind>2e-6)lagging++;

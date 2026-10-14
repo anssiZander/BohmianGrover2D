@@ -32,8 +32,8 @@ async function run() {
     const canvas = doc.getElementById('c'), r = canvas.getBoundingClientRect();
     canvas.dispatchEvent(new MouseEvent('click', {bubbles:true, clientX:r.left+r.width*((q>>2)+.5)/4, clientY:r.bottom-r.height*((q&3)+.5)/4}));
   }
-  check('Sidebar selector and individual gate buttons removed; fixed 4x4 wave remains',
-    !doc.getElementById('goalGrid') && !doc.getElementById('gridSize') && doc.querySelectorAll('.ops button').length === 2 && doc.querySelectorAll('#waveLabels [data-region]').length === 16);
+  check('Compact controls retain the selectable grid and default 4x4 wave',
+    !doc.getElementById('goalGrid') && doc.getElementById('gridSize').value === '4' && doc.querySelectorAll('.ops button').length === 2 && doc.querySelectorAll('#waveLabels [data-region]').length === 16);
   const nextRect = doc.getElementById('next').getBoundingClientRect(), fullRect = doc.getElementById('full').getBoundingClientRect();
   check('Next and full search are side by side', Math.abs(nextRect.top-fullRect.top)<1 && fullRect.left>nextRect.left);
   check('Guide shares the title header without a separate row', guide.parentElement.id === 'waveHeader');
@@ -46,7 +46,7 @@ async function run() {
   const held = JSON.stringify(api.state()); clickWave(0);
   check('Done prevents accidental canvas edits',guide.dataset.step==='ready' && JSON.stringify(api.state())===held);
   check('Chosen input appears in all circuit wires and both cell markers',
-    [...doc.querySelectorAll('.circuitInput')].map(el=>el.textContent).join('')==='|0⟩|1⟩|1⟩|0⟩' &&
+    [...doc.querySelectorAll('.circuitInput')].map(el=>el.textContent).join('')==='|1⟩|2⟩' &&
     doc.querySelector('.waveCell.initial').dataset.region==='6' && doc.querySelector('.waveCell.marked').dataset.region==='9');
   const expectedOrder = Array.from({ length: 16 }, (_, i) => 4 * (i % 4) + 3 - Math.floor(i / 4));
   check('Wave retains spatial ordering',difference([...doc.querySelectorAll('#waveLabels [data-region]')].map(el=>Number(el.dataset.region)),expectedOrder)===0);

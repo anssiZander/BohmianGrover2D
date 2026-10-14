@@ -1,4 +1,51 @@
-# Verification — MultiRegion 4×4
+# Verification — MultiRegion
+
+## Selectable 2×2 through 5×5 grids — 2026-10-14
+
+Ported Spin's grid-size selection through scalar amplitudes, sine packets,
+spatial integrals, gate plans, shader uniforms, current reconstruction, particle
+initialization/binning, grid/circuit labels, Bloch geometry and recording names.
+The search uses 4, 9, 16 or 25 scalar states and 1, 2, 3 or 3 iterations.
+Resizing cancels playback and resets the wave, particles, trails and history;
+selected coordinates are retained or clamped to the new boundary.
+
+The original 4×4 Hadamard, 2.4-unit mixing durations and signed inverse
+are unchanged. The 2×2 grid uses the corresponding qubit Hadamard; 3×3 and
+5×5 use the documented Hermitian complex Hadamard with H²=I. All sizes
+use the same non-free projector Hamiltonian and curl-free conserved current.
+
+**37/37 numerical tests pass.** The new grid suite checks every one of
+the 978 initial/goal pairs across all sizes, balanced preparation, unitarity,
+the branch-specific inverse path, spatial probability normalization, continuity,
+wall flux, Born sampling and running/paused resize behavior. The existing 4×4
+independent matrix-exponential references and current tests still pass.
+
+**Grid browser/GPU: 206/206. Existing 4×4 browser/UI: 172/172.**
+Tested the production page in Chromium with ANGLE / D3D11 on NVIDIA GeForce
+RTX 4070 Laptop GPU, using the 512×512 float wave texture. The grid fixture
+runs complete searches at every size with 1,000 guided particles, samples gate
+interiors, reads actual GPU wave/current buffers, checks click mapping, pause,
+iteration badges and resizing during a queued search. The free-mode fixture
+also checks the goal selector's actual row/column positions. Both mode layouts
+were visually inspected at 5×5.
+
+| Grid-fixture measurement | Maximum error |
+| --- | ---: |
+| Complex GPU wave component | 3.893e-6 |
+| Integrated GPU norm | 4.420e-7 |
+| GPU current component | 6.982e-7 |
+| GPU flow density | 9.895e-6 |
+| Particle region probability (1,000 samples) | 1.829 percentage points |
+| Particle clock lag / integration failures | 0 / 0 |
+| WebGL errors | 0 |
+
+All JavaScript syntax checks, asset-version/static checks and `git diff --check`
+pass. Page assets, module imports and fetched shaders share release
+`20261014-grids2`. Reproduce the new GPU suite at
+`/tests/grid-browser-check.html`; commands for numerical tests are in README.md.
+
+Earlier verification records follow; fixed-size descriptions below refer to
+those historical versions.
 
 ## Guided main-grid selection and compact layout — 2026-09-29
 
